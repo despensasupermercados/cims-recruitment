@@ -18,16 +18,17 @@ export const PAGE_HTML = `<!DOCTYPE html>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:#EEF1F4; font-family:'DM Sans',sans-serif; color:var(--navy); padding-bottom:60px; }
   .topbar { height:4px; background:linear-gradient(90deg, var(--navy) 60%, var(--green) 60%); }
-  .hero { background:var(--navy); padding:26px 0 30px; }
-  .hero-inner { max-width:640px; margin:0 auto; padding:0 24px; }
-  .wordmark { display:flex; align-items:center; gap:8px; margin-bottom:18px; }
-  .wm-cims { font-family:'Outfit',sans-serif; font-size:17px; font-weight:700; color:#fff; letter-spacing:3px; }
-  .wm-bar { width:1.5px; height:13px; background:var(--green); }
-  .wm-dg3 { font-family:'Outfit',sans-serif; font-size:10.5px; font-weight:600; color:var(--green); letter-spacing:1.5px; }
-  .hero h1 { font-family:'Outfit',sans-serif; font-size:23px; font-weight:600; color:#fff; }
-  .hero p { font-size:12.5px; color:rgba(255,255,255,0.65); margin-top:6px; line-height:1.6; }
-  .hero p b { color:var(--green-light); font-weight:600; }
-  .sheet { max-width:640px; margin:-14px auto 0; padding:0 24px; }
+  .hero { background:var(--navy); padding:34px 0 42px; }
+  .hero-inner { max-width:760px; margin:0 auto; padding:0 24px; }
+  .wordmark { display:flex; align-items:center; gap:8px; margin-bottom:30px; }
+  .wm-cims { font-family:'Outfit',sans-serif; font-size:16px; font-weight:700; color:#fff; letter-spacing:3px; }
+  .wm-bar { width:1.5px; height:12px; background:var(--green); }
+  .wm-dg3 { font-family:'Outfit',sans-serif; font-size:10px; font-weight:600; color:var(--green); letter-spacing:1.5px; }
+  .hero h1 { font-family:'Outfit',sans-serif; font-size:26px; font-weight:600; color:#fff; letter-spacing:-0.2px; }
+  .hero .meta-line { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:14px; font-size:12px; color:rgba(255,255,255,0.55); }
+  .hero .meta-line span { display:inline-flex; align-items:center; gap:7px; }
+  .hero .meta-line i { width:5px; height:5px; border-radius:50%; background:var(--green); font-style:normal; }
+  .sheet { max-width:760px; margin:-16px auto 0; padding:0 24px; }
   .card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:20px 22px; margin-bottom:12px; }
   .sec-label { font-size:9px; font-weight:700; color:var(--green); letter-spacing:2.5px; text-transform:uppercase; margin-bottom:4px; }
   .sec-hint { font-size:11.5px; color:var(--light-slate); margin-bottom:14px; line-height:1.5; }
@@ -98,7 +99,11 @@ export const PAGE_HTML = `<!DOCTYPE html>
   <div class="hero-inner">
     <div class="wordmark"><span class="wm-cims">CIMS</span><div class="wm-bar"></div><span class="wm-dg3">DG3</span></div>
     <h1>Monthly Recruitment Submission</h1>
-    <p>Hi Yanna — this covers the <b>month just ended</b>. Fill, submit, and the update is compiled and emailed to the team automatically. About 10 minutes.</p>
+    <div class="meta-line">
+      <span><i></i>Covers the month just ended</span>
+      <span><i></i>About 10 minutes</span>
+      <span><i></i>Emails the team automatically on submit</span>
+    </div>
   </div>
 </div>
 
