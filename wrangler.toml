@@ -1,0 +1,19 @@
+name = "cims-recruitment"
+main = "src/worker.js"
+compatibility_date = "2026-07-01"
+
+# Public form at recruitment.cims.work — no login required.
+routes = [
+  { pattern = "recruitment.cims.work", custom_domain = true }
+]
+
+# Crons (UTC). 01:00 UTC = 09:00 Asia/Manila.
+#  - Monday 01:00 UTC  -> invitation email (only fires on the FIRST Monday of the month; code checks the date)
+#  - Thursday 01:00 UTC -> reminder email  (only fires the Thursday after the first Monday, and only if nothing was submitted)
+[triggers]
+crons = ["0 1 * * MON", "0 1 * * THU"]
+
+# Secrets (set in Cloudflare dashboard -> Workers -> cims-recruitment -> Settings -> Variables & Secrets):
+#   AIRTABLE_TOKEN   - Airtable personal access token, scoped to the "TDG Recruitment Pipeline" base,
+#                      scopes: data.records:read + data.records:write
+#   RESEND_API_KEY   - same Resend key the CIMS HR console uses

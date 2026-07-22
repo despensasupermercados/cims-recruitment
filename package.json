@@ -1,0 +1,6 @@
+{
+  "name": "cims-recruitment",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test test/lib.test.js" }
+}
