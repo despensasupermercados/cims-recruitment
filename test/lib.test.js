@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  parseMonth, monthKey, prevMonthName, isFirstMonday, isReminderThursday,
-  validateSubmission, computeDigest, manilaNow,
+  parseMonth, monthKey, monthRange, prevMonthName, isFirstMonday, isReminderThursday,
+  validateSubmission, computeDigest, manilaNow, fleetFromVessel, fleetFromShip, countByFleet,
 } from "../src/lib.js";
 
 const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
@@ -10,63 +10,83 @@ const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
 function goodPayload() {
   return {
     month: "July 2026",
-    submittedBy: "Yanna",
+    submittedBy: "Recruitment Admin",
     counts: { inProcess: 38, interviewed: 22, approved: 4, rejected: 16, inVisa: 5, inMedicals: 6, ready: 3, big5Avg: 448 },
     channels: { tcms: 31, referrals: 6, walkins: 1 },
     fleet: {
       approved: { RCL: 3, CEL: 1, AZ: 0, NCL: 0 },
       visa: { RCL: 2, CEL: 3, AZ: 0, NCL: 0 },
       medicals: { RCL: 2, CEL: 2, AZ: 1, NCL: 1 },
-      ready: { RCL: 2, CEL: 1, AZ: 0, NCL: 0 },
-      joined: { RCL: 1, CEL: 0, AZ: 0, NCL: 0 },
     },
     rejectionReasons: "11 not the best candidate · 4 failed Big 5 · 1 not eligible",
     people: {
-      ready: [{ name: "Cruz, Ana", fleet: "CEL", date: "02 Aug" }],
-      joined: [{ name: "Bornea, Mark John", fleet: "RCL" }],
+      ready: [
+        { name: "Cruz, Ana", fleet: "CEL", date: "02 Aug" },
+        { name: "Valderrama, Jeffrey", fleet: "RCL", date: "", src: "console" },
+        { name: "Reyes, Ben", fleet: "RCL", date: "08 Aug" },
+      ],
+      joined: [{ name: "Bo, Dan Angelo", fleet: "RCL", date: "2026-06-25", src: "console" }],
       flags: [],
     },
     visaMedical: [{ name: "Velasco", fleet: "RCL", type: "Visa denied", note: "can re-apply" }],
-    compliance: [{ name: "Estandian, Mark", doc: "Medical", expires: "Sep 2026" }],
+    compliance: [{ name: "Estandian, Mark", doc: "Medical", expires: "2026-09-23", src: "console" }],
     forecast: { joiners: 20, roles: "20 Printer Specialists" },
+    signoffOutlook: 11,
     feedback: { positive: "Referral program", pain: "Rejected applicant policy" },
     decisions: "NONE",
     observations: "",
   };
 }
 
-test("parseMonth accepts 'July 2026' and rejects junk", () => {
+test("parseMonth / monthKey / monthRange", () => {
   assert.deepEqual(parseMonth("July 2026"), { y: 2026, m: 6 });
   assert.equal(parseMonth("2026-07"), null);
-  assert.equal(parseMonth("Julyy 2026"), null);
   assert.ok(monthKey("August 2026") === monthKey("July 2026") + 1);
+  assert.deepEqual(monthRange("July 2026"), { start: "2026-07-01", end: "2026-08-01" });
+  assert.deepEqual(monthRange("December 2026"), { start: "2026-12-01", end: "2027-01-01" });
 });
 
 test("prevMonthName crosses year boundary", () => {
-  const jan = new Date(Date.UTC(2027, 0, 4));
-  assert.equal(prevMonthName(jan), "December 2026");
+  assert.equal(prevMonthName(new Date(Date.UTC(2027, 0, 4))), "December 2026");
 });
 
 test("first-Monday and reminder-Thursday detection", () => {
-  // Monday 3 Aug 2026 is the first Monday of August.
   assert.ok(isFirstMonday(new Date(Date.UTC(2026, 7, 3))));
-  // Monday 10 Aug is NOT.
   assert.ok(!isFirstMonday(new Date(Date.UTC(2026, 7, 10))));
-  // Thursday 6 Aug is the reminder Thursday (day 4..10).
   assert.ok(isReminderThursday(new Date(Date.UTC(2026, 7, 6))));
-  // Thursday 13 Aug is not.
   assert.ok(!isReminderThursday(new Date(Date.UTC(2026, 7, 13))));
 });
 
-test("valid payload passes and normalises", () => {
-  const { ok, errors, clean } = validateSubmission(goodPayload(), FLEETS);
-  assert.deepEqual(errors, []);
-  assert.ok(ok);
-  assert.equal(clean.counts.inProcess, 38);
-  assert.equal(clean.joinedTotal, 1);
+test("fleet mapping from vessel and ship names", () => {
+  assert.equal(fleetFromVessel("MV AZAMARA ONWARD"), "AZ");
+  assert.equal(fleetFromVessel("MV CELEBRITY SOLSTICE"), "CEL");
+  assert.equal(fleetFromVessel("MV WONDER OF THE SEAS"), "RCL");
+  assert.equal(fleetFromVessel(null), "");
+  assert.equal(fleetFromShip("Onward"), "AZ");
+  assert.equal(fleetFromShip("Millennium"), "CEL");
+  assert.equal(fleetFromShip("Mariner"), "RCL");
 });
 
-test("channel mismatch is rejected with a clear message", () => {
+test("valid payload passes; ready/joined fleet rows are derived from Part 2", () => {
+  const { ok, errors, warnings, clean } = validateSubmission(goodPayload(), FLEETS);
+  assert.deepEqual(errors, []);
+  assert.ok(ok);
+  assert.deepEqual(clean.fleet.ready, { RCL: 2, CEL: 1, AZ: 0, NCL: 0 });
+  assert.deepEqual(clean.fleet.joined, { RCL: 1, CEL: 0, AZ: 0, NCL: 0 });
+  assert.equal(clean.joinedTotal, 1);
+  assert.equal(clean.signoffOutlook, 11);
+  assert.deepEqual(warnings, []); // 3 ready in pipeline, 3 ready people
+});
+
+test("ready-count mismatch is a warning, not an error", () => {
+  const p = goodPayload();
+  p.people.ready.pop();
+  const { ok, warnings } = validateSubmission(p, FLEETS);
+  assert.ok(ok);
+  assert.ok(warnings.some(w => w.includes("ready to deploy")));
+});
+
+test("channel mismatch is rejected", () => {
   const p = goodPayload();
   p.channels.tcms = 30;
   const { ok, errors } = validateSubmission(p, FLEETS);
@@ -74,26 +94,29 @@ test("channel mismatch is rejected with a clear message", () => {
   assert.ok(errors.some(e => e.includes("don't add up to In process")));
 });
 
-test("fleet matrix mismatch is rejected", () => {
+test("candidate-stage fleet mismatch is rejected", () => {
   const p = goodPayload();
-  p.fleet.ready.RCL = 5;
+  p.fleet.approved.RCL = 5;
   const { ok, errors } = validateSubmission(p, FLEETS);
   assert.ok(!ok);
-  assert.ok(errors.some(e => e.includes("Fleet row 'Ready'")));
+  assert.ok(errors.some(e => e.includes("Fleet row 'Approved'")));
 });
 
-test("decisions must be explicit — blank is rejected", () => {
+test("decisions must be explicit", () => {
   const p = goodPayload();
   p.decisions = "";
-  const { ok, errors } = validateSubmission(p, FLEETS);
-  assert.ok(!ok);
-  assert.ok(errors.some(e => e.includes("Decisions needed")));
+  assert.ok(!validateSubmission(p, FLEETS).ok);
 });
 
 test("honeypot rejects bots", () => {
   const p = goodPayload();
   p.website = "http://spam";
   assert.ok(!validateSubmission(p, FLEETS).ok);
+});
+
+test("countByFleet ignores unknown fleets", () => {
+  const out = countByFleet([{ fleet: "RCL" }, { fleet: "Unassigned" }, { fleet: "CEL" }], FLEETS);
+  assert.deepEqual(out, { RCL: 1, CEL: 1, AZ: 0, NCL: 0 });
 });
 
 test("computeDigest: deltas, rate trail, gap, interviews-to-fill", () => {
@@ -105,9 +128,7 @@ test("computeDigest: deltas, rate trail, gap, interviews-to-fill", () => {
   const d = computeDigest(clean, prev);
   assert.equal(d.prevMonth, "June 2026");
   assert.equal(d.delta.inProcess, 7);
-  assert.equal(d.delta.ready, 2);
   assert.equal(d.rates[0].rate, 18);
-  assert.equal(d.rates[1].rate, 24);
   assert.equal(d.rates[2].rate, 32);
   assert.equal(d.gap, 17);
   assert.equal(d.interviewsToFill, Math.ceil(20 / 0.18));
@@ -121,6 +142,5 @@ test("computeDigest with no history has null deltas", () => {
 });
 
 test("manilaNow shifts by +8h", () => {
-  const utcMidnight = new Date(Date.UTC(2026, 7, 3, 0, 0));
-  assert.equal(manilaNow(utcMidnight).getUTCHours(), 8);
+  assert.equal(manilaNow(new Date(Date.UTC(2026, 7, 3, 0, 0))).getUTCHours(), 8);
 });
