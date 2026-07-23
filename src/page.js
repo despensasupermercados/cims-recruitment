@@ -28,9 +28,14 @@ export const PAGE_HTML = `<!DOCTYPE html>
   .hero { background:var(--navy); padding:34px 0 42px; }
   .hero-inner { max-width:760px; margin:0 auto; padding:0 24px; }
   .wordmark { display:flex; align-items:center; gap:8px; margin-bottom:30px; }
+  .wm-left { display:flex; align-items:center; gap:8px; }
   .wm-cims { font-family:'Outfit',sans-serif; font-size:16px; font-weight:700; color:#fff; letter-spacing:3px; }
   .wm-bar { width:1.5px; height:12px; background:var(--green); }
   .wm-dg3 { font-family:'Outfit',sans-serif; font-size:10px; font-weight:600; color:var(--green); letter-spacing:1.5px; }
+  .hnav { margin-left:auto; display:flex; gap:6px; }
+  .hnav a { font-size:11.5px; font-weight:600; color:rgba(255,255,255,.72); text-decoration:none; padding:6px 13px; border-radius:8px; border:1px solid rgba(255,255,255,.16); }
+  .hnav a:hover { color:#fff; background:rgba(255,255,255,.1); }
+  .hnav a.on { color:#fff; background:rgba(255,255,255,.14); border-color:transparent; }
   .hero h1 { font-family:'Outfit',sans-serif; font-size:26px; font-weight:600; color:#fff; letter-spacing:-0.2px; }
   .hero .meta-line { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:14px; font-size:12px; color:rgba(255,255,255,0.55); }
   .hero .meta-line span { display:inline-flex; align-items:center; gap:7px; }
@@ -143,7 +148,8 @@ export const PAGE_HTML = `<!DOCTYPE html>
 
 <div class="hero">
   <div class="hero-inner">
-    <div class="wordmark"><span class="wm-cims">CIMS</span><div class="wm-bar"></div><span class="wm-dg3">DG3</span></div>
+    <div class="wordmark"><div class="wm-left"><span class="wm-cims">CIMS</span><div class="wm-bar"></div><span class="wm-dg3">DG3</span></div><div class="hnav"><a class="on" href="#">Monthly report</a><a id="navAdmin" href="/admin">Admin</a><a id="navReports" href="/reports">Reports</a></div></div>
+    <script>(function(){var k=new URLSearchParams(location.search).get('k')||'';var a=document.getElementById('navAdmin');var r=document.getElementById('navReports');if(a)a.href='/admin?k='+encodeURIComponent(k);if(r)r.href='/reports?k='+encodeURIComponent(k);})();</script>
     <h1>Monthly Recruitment Submission</h1>
     <div class="meta-line">
       <span><i></i>Part 1 Recruitment Admin &middot; Part 2 Crew Admin</span>
@@ -212,7 +218,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
     <div class="sec-label">3 &middot; By Fleet</div>
     <div class="sec-hint">Candidate stages entered per fleet. Ready and Joined compute themselves from Part 2 — no double entry.</div>
     <table class="matrix" id="matrix"></table>
-    <div class="check" id="matrixCheck"><b>&#10003;</b> <span>Fleet totals match pipeline counts</span></div>
+    <div class="check" id="matrixCheck"><b>&#10003;</b> Fleet totals match pipeline counts</div>
   </div>
 
   <div class="card">
@@ -492,6 +498,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
     var mc = byId("matrixCheck");
     mc.className = allOk ? "check" : "check bad";
     mc.innerHTML = allOk ? "<b>&#10003;</b> Fleet totals match pipeline counts" : "<b>&#10007;</b> Fleet totals do not match the pipeline counts above";
+
   }
 
   // --- payload
