@@ -12,12 +12,11 @@ const HEAD = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 body{margin:0;font-family:'DM Sans',sans-serif;color:var(--ink);min-height:100vh;
  background:radial-gradient(1100px 500px at 85% -10%,rgba(95,185,70,.16),transparent 60%),
             radial-gradient(900px 600px at -10% 110%,rgba(27,58,92,.12),transparent 55%),var(--bg)}
-.shell{max-width:640px;margin:0 auto;padding:34px 16px 40px}
-.brandrow{display:flex;align-items:center;gap:10px;margin-bottom:22px}
-.mark{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--navy2),#2A5580);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px rgba(18,44,71,.25)}
-.mark svg{display:block}
-.brandrow .t1{font-family:Outfit;font-weight:800;font-size:16px;color:var(--navy);letter-spacing:2.5px}
-.brandrow .t2{font-size:10.5px;font-weight:700;letter-spacing:2px;color:var(--mut);text-transform:uppercase}
+.topbar{background:linear-gradient(100deg,var(--navy2) 60%,#2A5580);border-bottom:3px solid var(--green)}
+.topbar .in{max-width:640px;margin:0 auto;padding:16px;display:flex;align-items:baseline;gap:12px}
+.topbar .t1{font-family:Outfit;font-weight:800;font-size:19px;color:#fff;letter-spacing:4px}
+.topbar .t2{font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.62);text-transform:uppercase}
+.shell{max-width:640px;margin:0 auto;padding:30px 16px 40px}
 h1{font-family:Outfit;font-size:clamp(24px,5vw,31px);font-weight:800;color:var(--navy);margin:0 0 6px;letter-spacing:-.3px}
 .sub{font-size:14.5px;color:#43566d;line-height:1.6;margin:0 0 22px;max-width:520px}
 .steps{display:flex;gap:8px;margin:0 0 26px}
@@ -74,12 +73,11 @@ button.cta:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
 .hint{font-size:12px;color:var(--mut);margin-top:6px}
 </style></head><body>`;
 
-const MARK = `<div class="mark"><svg width="20" height="20" viewBox="0 0 34 34" fill="none"><rect x="4" y="2" width="20" height="26" rx="2" stroke="#5FB946" stroke-width="2.2" fill="none"/><line x1="8" y1="10" x2="20" y2="10" stroke="#5FB946" stroke-width="1.6" opacity="0.85"/><line x1="8" y1="15" x2="18" y2="15" stroke="#5FB946" stroke-width="1.6" opacity="0.55"/><line x1="8" y1="20" x2="16" y2="20" stroke="#5FB946" stroke-width="1.6" opacity="0.3"/></svg></div>`;
+const TOPBAR = `<div class="topbar"><div class="in"><span class="t1">CIMS</span><span class="t2">DG3 Cruise Industry Managed Services</span></div></div>`;
 const CHECKSVG = `<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5.2 4.4 8.6 11 1.6" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-export const APPLY_HTML = HEAD + `
+export const APPLY_HTML = HEAD + TOPBAR + `
 <div class="shell">
- <div class="brandrow">` + MARK + `<div><div class="t1">CIMS</div><div class="t2">DG3 Cruise Industry Managed Services</div></div></div>
  <h1>Sail with us.</h1>
  <p class="sub">Apply for a shipboard position in three steps. Your <b>email address is your applicant ID</b> for the whole process — use one you check daily.</p>
  <div class="steps">
@@ -191,9 +189,8 @@ document.getElementById('f').addEventListener('submit',function(ev){
 });
 </script></body></html>`;
 
-export const VERIFY_HTML = HEAD + `
+export const VERIFY_HTML = HEAD + TOPBAR + `
 <div class="shell">
- <div class="brandrow">` + MARK + `<div><div class="t1">CIMS</div><div class="t2">DG3 Cruise Industry Managed Services</div></div></div>
  <h1>Almost there.</h1>
  <p class="sub">You completed the assessment — now submit your Result ID so we can verify it.</p>
  <div class="steps">
