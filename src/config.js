@@ -6,27 +6,29 @@
 
 // --- Digest recipients ------------------------------------------------------
 // Until every "@example.com" placeholder is gone, submissions are SAVED but
-// no email is sent.
+// no email is sent. Two placeholders remain: Miguel's and the Recruitment
+// Admin's (Yanna's) addresses.
 export const RECIPIENTS = {
   to: [
-    "miguel@example.com",     // Miguel San Martin
-    "rita@example.com",       // Rita
+    "miguel@example.com",                 // Miguel San Martin — PENDING
+    "Rita.Berenyi@dg3.com",               // Rita Berenyi
   ],
   cc: [
-    "recruitment.admin@example.com", // Recruitment Admin
-    "crew.admin@example.com",        // Crew Admin
-    "joyce@example.com",             // Manager
-    "ray@example.com",
-    "rolando@example.com",
-    "joemar@example.com",
-    "ohjie@example.com",
+    "recruitment.admin@example.com",      // Yanna — Recruitment Admin — PENDING
+    "maryjoy.manzanares@dg3.com",         // Maryjoy Manzanares — Crew Admin
+    "Joyce.Castillo@tdgcm.ph",            // Joyce Castillo — Manager
+    "Ray.Guerra@dg3.com",                 // Ray Guerra
+    "Rolando.Abellan@dg3.com",            // Rolando Abellan
+    "joemar.deleon@dg3.com",              // Joemar De Leon
+    "Ohji.Miranda@dg3.com",               // Ohji Miranda
+    "Dexter.Lawrence@dg3.com",            // Dexter Lawrence
   ],
 };
 
 // The invitation + reminder go to the two form owners (by role, not name).
 export const ADMINS = {
-  recruitmentAdmin: "recruitment.admin@example.com", // Part 1 — recruitment funnel
-  crewAdmin: "crew.admin@example.com",               // Part 2 — existing crew
+  recruitmentAdmin: "recruitment.admin@example.com", // Yanna — PENDING
+  crewAdmin: "maryjoy.manzanares@dg3.com",           // Maryjoy Manzanares
 };
 
 // Sender. Domain must be verified in Resend.
