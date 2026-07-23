@@ -38,7 +38,7 @@ export function auditLine(msg) {
   return new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC — " + msg;
 }
 
-export async function createCandidate(env, clean, auditMsg) {
+export async function createCandidate(env, clean, resumeUrl, auditMsg) {
   const fields = {
     [F.name]: clean.name,
     [F.email]: clean.email,
@@ -51,7 +51,7 @@ export async function createCandidate(env, clean, auditMsg) {
     [F.stage]: "Applied",
     [F.verdict]: "Pending Test",
     [F.dateApplied]: new Date().toISOString().slice(0, 10),
-    ...(clean.resumeLink ? { [F.notes]: "Resume link: " + clean.resumeLink } : {}),
+    ...(resumeUrl ? { [F.resume]: [{ url: resumeUrl, filename: clean.resume.name }] } : {}),
     [F.consent]: true,
     [F.audit]: auditLine(auditMsg),
   };

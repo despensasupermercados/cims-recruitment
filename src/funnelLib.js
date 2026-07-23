@@ -87,12 +87,18 @@ export function validateApplication(payload) {
   if (source === "Crew referral" && !referrer) errors.push("Please give the name of the crew member who referred you.");
   if (!p.consent) errors.push("Consent to process your application data is required.");
 
+  // Resume is required — uploaded first via /api/upload, referenced by key here.
+  const r = p.resume || {};
+  const resumeKey = String(r.key || "").trim();
+  const resumeName = String(r.name || "").trim().slice(0, 200);
+  if (!/^[0-9a-f-]{36}\.(pdf|doc|docx)$/i.test(resumeKey)) errors.push("Please attach your resume (PDF or Word).");
+
   const clean = {
     name, email, phone, position, source,
     referrer: source === "Crew referral" ? referrer : "",
     shipboard: !!p.shipboard,
     printer: !!p.printer,
-    resumeLink: String(p.resumeLink || "").trim().slice(0, 500),
+    resume: { key: resumeKey, name: resumeName || "resume" },
   };
   return { ok: errors.length === 0, errors, clean };
 }

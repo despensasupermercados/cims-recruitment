@@ -237,9 +237,42 @@ async function handleApply(body, env) {
     return json({ ok: false, errors: ["An application with this email is already in progress. Our recruitment team will contact you — no need to re-apply."] }, 400);
   }
 
-  const rec = await createCandidate(env, clean, "Applied via " + (body.door === "admin" ? "admin upload" : "public page") + " (" + clean.source + "). Test invite sent.");
+  const resumeUrl = FORM_URL + "/files/" + clean.resume.key;
+  const rec = await createCandidate(env, clean, resumeUrl,
+    "Applied via " + (body.door === "admin" ? "admin upload" : "public page") + " (" + clean.source + "). Resume: " + clean.resume.name + ". Test invite sent.");
   await sendInvite(env, clean.name, clean.email);
   return json({ ok: true, id: rec.id });
+}
+
+// Resume upload to R2. Files are served only via unguessable /files/<uuid>.<ext> URLs.
+const RESUME_EXT = { pdf: "application/pdf", doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+
+async function handleUpload(req, env) {
+  if (!env.RESUMES) return json({ ok: false, errors: ["Upload storage is not configured."] }, 500);
+  let fd;
+  try { fd = await req.formData(); } catch { return json({ ok: false, errors: ["Invalid upload."] }, 400); }
+  const f = fd.get("file");
+  if (!f || typeof f === "string") return json({ ok: false, errors: ["No file received."] }, 400);
+  if (f.size > 8 * 1024 * 1024) return json({ ok: false, errors: ["The file is larger than 8 MB."] }, 400);
+  const ext = String(f.name || "").split(".").pop().toLowerCase();
+  if (!RESUME_EXT[ext]) return json({ ok: false, errors: ["Please upload a PDF or Word document."] }, 400);
+  const key = crypto.randomUUID() + "." + ext;
+  await env.RESUMES.put(key, f.stream(), { httpMetadata: { contentType: RESUME_EXT[ext] } });
+  return json({ ok: true, key });
+}
+
+async function handleFile(pathname, env) {
+  const key = pathname.slice("/files/".length);
+  if (!/^[0-9a-f-]{36}\.(pdf|doc|docx)$/i.test(key) || !env.RESUMES) return new Response("Not found", { status: 404 });
+  const obj = await env.RESUMES.get(key);
+  if (!obj) return new Response("Not found", { status: 404 });
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
+      "Content-Disposition": "inline",
+      "Cache-Control": "private, max-age=300",
+    },
+  });
 }
 
 async function sendInvite(env, name, email) {
@@ -380,6 +413,13 @@ export default {
     }
     if (req.method === "GET" && url.pathname === "/verify") {
       return new Response(VERIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (req.method === "POST" && url.pathname === "/api/upload") {
+      try { return await handleUpload(req, env); }
+      catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/files/")) {
+      return handleFile(url.pathname, env);
     }
     if (req.method === "POST" && (url.pathname === "/api/apply" || url.pathname === "/api/verify")) {
       let body;

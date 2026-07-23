@@ -53,16 +53,22 @@ test("application validation", () => {
     name: "Cruz, Ana", email: "Ana@Example.org", phone: "+63 912 345 6789",
     position: "Printer Specialist", source: "Crew referral", referrer: "Jugao, Kevin",
     shipboard: true, printer: false, consent: true,
+    resume: { key: "0f8b7c6d-1234-4abc-9def-0123456789ab.pdf", name: "cruz_ana_cv.pdf" },
   };
   const { ok, clean } = validateApplication(good);
   assert.ok(ok);
   assert.equal(clean.email, "ana@example.org"); // lowercased — it is the ID
   assert.equal(clean.referrer, "Jugao, Kevin");
+  assert.equal(clean.resume.name, "cruz_ana_cv.pdf");
 
   assert.ok(!validateApplication({ ...good, consent: false }).ok);
   assert.ok(!validateApplication({ ...good, source: "Crew referral", referrer: "" }).ok);
   assert.ok(!validateApplication({ ...good, email: "nope" }).ok);
   assert.ok(!validateApplication({ ...good, website: "http://spam" }).ok);
+  // resume is REQUIRED — and the key format is strict (uuid.ext from our own upload endpoint)
+  assert.ok(!validateApplication({ ...good, resume: undefined }).ok);
+  assert.ok(!validateApplication({ ...good, resume: { key: "../../etc/passwd", name: "x" } }).ok);
+  assert.ok(!validateApplication({ ...good, resume: { key: "0f8b7c6d-1234-4abc-9def-0123456789ab.exe", name: "x" } }).ok);
   // referral name dropped when source is not a referral
   assert.equal(validateApplication({ ...good, source: "Walk-in" }).clean.referrer, "");
 });
