@@ -120,7 +120,7 @@ export const APPLY_HTML = HEAD + TOPBAR + `
    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off">
    <label class="consent" id="cWrap"><input type="checkbox" id="consent"><span class="box">` + CHECKSVG + `</span><span>I consent to DG3 CIMS processing my application data for recruitment purposes.</span></label>
    <div class="err" id="err"></div>
-   <button class="cta" id="go" type="submit">Submit application &#8594;</button>
+   <button class="cta" id="go" type="submit">Submit application</button>
   </form>
  </div>
  <div class="card okpane" id="done">
@@ -202,7 +202,7 @@ export const VERIFY_HTML = HEAD + TOPBAR + `
  </div>
  <div class="card" id="formCard">
   <div class="callout"><b>1.</b> Take the test (button below) &nbsp;&#8594;&nbsp; <b>2.</b> copy the Result ID at the end &nbsp;&#8594;&nbsp; <b>3.</b> come back and submit it with your email.</div>
-  <a class="cta2" href="https://bigfive-test.com/test" target="_blank" rel="noopener">Open the Big Five test &#8599;</a>
+  <a class="cta2" href="https://bigfive-test.com/test" target="_blank" rel="noopener">Open the Big Five test <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
   <form id="f">
    <label>Your email address <span class="opt">(the one you applied with)</span></label>
    <input type="email" id="email" placeholder="you@example.com" maxlength="120">
@@ -211,7 +211,7 @@ export const VERIFY_HTML = HEAD + TOPBAR + `
    <div class="hint">The long code on your results page next to &quot;Save the following ID&quot;.</div>
    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off">
    <div class="err" id="err"></div>
-   <button class="cta" id="go" type="submit">Submit result &#8594;</button>
+   <button class="cta" id="go" type="submit">Submit result</button>
   </form>
  </div>
  <div class="card okpane" id="done">
