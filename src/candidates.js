@@ -34,6 +34,18 @@ export async function findCandidateByResultId(env, resultId) {
   return data.records[0] || null;
 }
 
+export async function listPendingTests(env) {
+  const formula = encodeURIComponent('{Screening Verdict}="Pending Test"');
+  const out = [];
+  let offset = "";
+  do {
+    const data = await at(env, CANDIDATES.tableId + "?filterByFormula=" + formula + "&pageSize=100&returnFieldsByFieldId=true" + (offset ? "&offset=" + offset : ""));
+    out.push(...data.records);
+    offset = data.offset || "";
+  } while (offset);
+  return out;
+}
+
 export function auditLine(msg) {
   return new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC — " + msg;
 }

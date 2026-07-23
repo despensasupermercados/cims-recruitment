@@ -24,8 +24,9 @@ bucket_name = "cims-resumes"
 # Crons (UTC). 01:00 UTC = 09:00 Asia/Manila.
 #  - Monday 01:00 UTC  -> invitation email to both admins (first Monday only; code checks the date)
 #  - Thursday 01:00 UTC -> reminder (Thursday after the first Monday, only if not submitted)
+#  - Daily 02:00 UTC   -> applicant funnel sweep (7-day test reminder, 30-day auto-expiry)
 [triggers]
-crons = ["0 1 * * MON", "0 1 * * THU"]
+crons = ["0 1 * * MON", "0 1 * * THU", "0 2 * * *"]
 
 # Secrets (Cloudflare dashboard -> Workers -> cims-recruitment -> Settings -> Variables & Secrets):
 #   AIRTABLE_TOKEN   - Airtable PAT, scoped to "TDG Recruitment Pipeline", data.records:read+write

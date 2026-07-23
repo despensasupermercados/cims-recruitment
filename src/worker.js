@@ -9,8 +9,8 @@ import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
 import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS } from "./funnelLib.js";
-import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, cf } from "./candidates.js";
-import { renderTestInvite, renderPass, renderFail, renderAdminPassNotify } from "./funnelEmails.js";
+import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, cf } from "./candidates.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify } from "./funnelEmails.js";
 import { CANDIDATES } from "./config.js";
 
 const AT_API = "https://api.airtable.com/v0";
@@ -111,11 +111,11 @@ function adminEmails() {
   return [ADMINS.recruitmentAdmin, ADMINS.crewAdmin].filter(a => a && !isPlaceholder(a));
 }
 
-async function sendEmail(env, { to, cc, subject, html }) {
+async function sendEmail(env, { to, cc, subject, html, replyTo }) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to, ...(cc && cc.length ? { cc } : {}), subject, html }),
+    body: JSON.stringify({ from: FROM, to, ...(cc && cc.length ? { cc } : {}), ...(replyTo ? { reply_to: replyTo } : {}), subject, html }),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
   return res.json();
@@ -279,6 +279,7 @@ async function sendInvite(env, name, email) {
   if (!env.RESEND_API_KEY) return;
   await sendEmail(env, {
     to: [email],
+    replyTo: FUNNEL.notify[0],
     subject: "Your DG3 CIMS application — one step left: the assessment",
     html: renderTestInvite(name, FUNNEL.testUrl, FORM_URL + "/verify"),
   });
@@ -308,6 +309,16 @@ async function handleVerify(body, env) {
   const scores = parseBigFiveHtml(await res.text());
   if (!scores) {
     await updateCandidate(env, rec.id, {}, cf(rec, "audit"), "Result " + resultId + " fetched but scores could not be parsed — needs manual review.");
+    if (env.RESEND_API_KEY) {
+      const who = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
+      if (who.length) await sendEmail(env, {
+        to: who,
+        subject: "Manual review needed — assessment result could not be read",
+        html: "<p>Candidate <b>" + (cf(rec, "name") || email) + "</b> (" + email + ") submitted result ID <code>" + resultId +
+          "</code> but the scores could not be parsed automatically (the test provider may have changed its page format).</p>" +
+          "<p>Please open <a href=\"https://bigfive-test.com/result/" + resultId + "\">the result</a>, read the five scores manually, and record the outcome on the candidate record.</p>",
+      });
+    }
     return json({ ok: false, errors: ["We could not read that result automatically. The recruitment team has been notified and will review it manually."] }, 500);
   }
 
@@ -332,9 +343,9 @@ async function handleVerify(body, env) {
 
   if (env.RESEND_API_KEY) {
     if (gate === "reject") {
-      await sendEmail(env, { to: [email], subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.notify[0], subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
     } else {
-      await sendEmail(env, { to: [email], subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.notify[0], subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
       const notify = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
       if (notify.length) {
         await sendEmail(env, {
@@ -350,6 +361,32 @@ async function handleVerify(body, env) {
     }
   }
   return json({ ok: true });
+}
+
+// Daily funnel sweep (02:00 UTC): 7-day test reminder, 30-day auto-expiry.
+// Idempotent — the reminder is sent once (marked in the audit log); expiry is terminal.
+async function funnelDaily(env) {
+  const rows = await listPendingTests(env);
+  for (const rec of rows) {
+    const applied = cf(rec, "dateApplied");
+    if (!applied) continue;
+    const days = (Date.now() - new Date(applied + "T00:00:00Z").getTime()) / 86400000;
+    const email = cf(rec, "email");
+    const name = cf(rec, "name") || email || "candidate";
+    const audit = cf(rec, "audit") || "";
+    if (days >= 30) {
+      await updateCandidate(env, rec.id, {
+        [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
+      }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
+    } else if (days >= 7 && !audit.includes("7-day reminder sent") && env.RESEND_API_KEY && email) {
+      await sendEmail(env, {
+        to: [email], replyTo: FUNNEL.notify[0],
+        subject: "Reminder — your DG3 CIMS assessment is waiting",
+        html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
+      });
+      await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +475,7 @@ export default {
     }
     return new Response("Not found", { status: 404 });
   },
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(handleScheduled(env));
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(event && event.cron === "0 2 * * *" ? funnelDaily(env) : handleScheduled(env));
   },
 };
