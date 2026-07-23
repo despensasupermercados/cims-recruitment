@@ -25,15 +25,26 @@ export async function consoleContext(env, reportingMonth) {
   try {
     const range = monthRange(reportingMonth);
 
-    // Crew names for the type-ahead (active crew only; name + fleet, nothing else).
-    const crewRows = await all(env,
-      "SELECT last_name || ', ' || first_name AS name, vessel_observed AS vessel, status FROM crew WHERE status != 'Inactive' AND last_name IS NOT NULL ORDER BY last_name");
+    // Crew names for the type-ahead. Manual edits in crew_override ALWAYS win over the
+    // imported base row (same rule as the console): overridden status/vessel apply, and
+    // crew tagged retired are excluded everywhere in this module.
+    const crewRows = (await all(env,
+      "SELECT c.agency_id AS sc, c.last_name || ', ' || c.first_name AS name, " +
+      "COALESCE(NULLIF(TRIM(o.vessel_observed),''), c.vessel_observed) AS vessel, " +
+      "COALESCE(NULLIF(o.status,''), c.status) AS status, COALESCE(o.retired, 0) AS retired " +
+      "FROM crew c LEFT JOIN crew_override o ON o.agency_id = c.agency_id " +
+      "WHERE c.last_name IS NOT NULL ORDER BY c.last_name"))
+      .filter(r => !r.retired && r.status !== "Retired" && r.status !== "Inactive");
     const crewNames = crewRows.map(r => ({ name: r.name, fleet: fleetFromVessel(r.vessel) }));
 
-    // Ready-to-deploy suggestions: crew genuinely awaiting assignment —
-    // no ship on record, not Earmarked, not Inactive, not currently on board.
+    // Ready-to-deploy suggestions: crew genuinely awaiting assignment — effective status
+    // On Vacation (override wins), no ship on record (override wins), not retired, not
+    // Earmarked, and no currently-active contract leg in the schedule.
+    const activeScRows = await all(env,
+      "SELECT DISTINCT sc FROM keyman_contract3 WHERE sign_on IS NOT NULL AND date(sign_on) <= date('now') AND (act_off IS NULL OR act_off = '') AND proj_off IS NOT NULL AND date(proj_off) >= date('now')");
+    const activeSc = new Set(activeScRows.map(r => r.sc));
     const awaiting = crewRows
-      .filter(r => r.status === "On Vacation" && (!r.vessel || String(r.vessel).trim() === ""))
+      .filter(r => r.status === "On Vacation" && (!r.vessel || String(r.vessel).trim() === "") && !activeSc.has(r.sc))
       .map(r => ({ name: r.name, fleet: "" }));
 
     // Deployments in the reporting month: contract sign-ons joined to crew.
@@ -46,8 +57,16 @@ export async function consoleContext(env, reportingMonth) {
     }
 
     // Visa & Medical: expiries that fall INSIDE the reporting month only.
-    const docRows = await all(env,
-      "SELECT last_name || ', ' || first_name AS name, vessel_observed AS vessel, status, med_exp, usv_exp, sirb_exp, pp_exp, sch_exp FROM crew WHERE status != 'Inactive'");
+    // Doc expiry dates also follow manual-wins (crew_override), and retired crew are excluded.
+    const docRows = (await all(env,
+      "SELECT c.last_name || ', ' || c.first_name AS name, " +
+      "COALESCE(NULLIF(TRIM(o.vessel_observed),''), c.vessel_observed) AS vessel, " +
+      "COALESCE(NULLIF(o.status,''), c.status) AS status, COALESCE(o.retired, 0) AS retired, " +
+      "COALESCE(NULLIF(o.med_exp,''), c.med_exp) AS med_exp, COALESCE(NULLIF(o.usv_exp,''), c.usv_exp) AS usv_exp, " +
+      "COALESCE(NULLIF(o.sirb_exp,''), c.sirb_exp) AS sirb_exp, COALESCE(NULLIF(o.pp_exp,''), c.pp_exp) AS pp_exp, " +
+      "COALESCE(NULLIF(o.sch_exp,''), c.sch_exp) AS sch_exp " +
+      "FROM crew c LEFT JOIN crew_override o ON o.agency_id = c.agency_id WHERE c.last_name IS NOT NULL"))
+      .filter(r => !r.retired && r.status !== "Retired" && r.status !== "Inactive");
     const visaMedical = [];
     if (range) {
       for (const r of docRows) {
