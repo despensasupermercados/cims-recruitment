@@ -2,18 +2,26 @@ name = "cims-recruitment"
 main = "src/worker.js"
 compatibility_date = "2026-07-01"
 
-# Public form at recruitment.cims.work — no login required.
+# Private form at recruitment.cims.work — no login; access via secret link (?k=FORM_KEY).
 routes = [
   { pattern = "recruitment.cims.work", custom_domain = true }
 ]
 
+# READ-ONLY access to the CIMS HR console database for Part 2 prefill.
+# The worker only ever runs fixed SELECT statements (see src/consoleData.js);
+# it never writes to this database.
+[[d1_databases]]
+binding = "CONSOLE_DB"
+database_name = "cims-hr-console"
+database_id = "f0ac8b6a-deac-4214-8f42-e22b202d7d7d"
+
 # Crons (UTC). 01:00 UTC = 09:00 Asia/Manila.
-#  - Monday 01:00 UTC  -> invitation email (only fires on the FIRST Monday of the month; code checks the date)
-#  - Thursday 01:00 UTC -> reminder email  (only fires the Thursday after the first Monday, and only if nothing was submitted)
+#  - Monday 01:00 UTC  -> invitation email to both admins (first Monday only; code checks the date)
+#  - Thursday 01:00 UTC -> reminder (Thursday after the first Monday, only if not submitted)
 [triggers]
 crons = ["0 1 * * MON", "0 1 * * THU"]
 
-# Secrets (set in Cloudflare dashboard -> Workers -> cims-recruitment -> Settings -> Variables & Secrets):
-#   AIRTABLE_TOKEN   - Airtable personal access token, scoped to the "TDG Recruitment Pipeline" base,
-#                      scopes: data.records:read + data.records:write
-#   RESEND_API_KEY   - same Resend key the CIMS HR console uses
+# Secrets (Cloudflare dashboard -> Workers -> cims-recruitment -> Settings -> Variables & Secrets):
+#   AIRTABLE_TOKEN   - Airtable PAT, scoped to "TDG Recruitment Pipeline", data.records:read+write
+#   RESEND_API_KEY   - Resend key
+#   FORM_KEY         - the secret in the bookmark link, e.g. recruitment.cims.work/?k=<FORM_KEY>
