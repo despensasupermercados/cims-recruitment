@@ -35,7 +35,7 @@ function deltaHtml(d) {
 }
 
 /** The team digest. clean = validated submission; digest = computeDigest output. */
-export function renderDigest(clean, digest, { revised, consoleUrl }) {
+export function renderDigest(clean, digest, { revised, consoleUrl, warnings }) {
   const c = clean.counts, d = digest.delta;
   const kpis = [
     ["In process", c.inProcess, d.inProcess], ["Interviewed", c.interviewed, d.interviewed],
@@ -51,7 +51,7 @@ export function renderDigest(clean, digest, { revised, consoleUrl }) {
   const facts = [
     ["Approval rate", digest.rates[0].rate === null ? "—" : digest.rates[0].rate + "%", rateTrail],
     ["Big 5 avg score", c.big5Avg ?? "—", ""],
-    ["Ready vs forecast", `${c.ready} / ${clean.forecast.joiners}`, `gap ${digest.gap}`],
+    ["Ready vs forecast", `${c.ready} / ${clean.forecast.joiners}`, `gap ${digest.gap} · ${clean.signoffOutlook || 0} sign-offs 60d`],
     ["Interviews to fill " + clean.forecast.joiners, digest.interviewsToFill ? "≈" + digest.interviewsToFill : "—", digest.rates[0].rate ? "at " + digest.rates[0].rate + "% approval" : ""],
   ];
   const factCells = facts.map(([l, v, s]) => `<td style="padding:9px 12px;background:${CLOUD};border-radius:6px;">
@@ -97,7 +97,7 @@ export function renderDigest(clean, digest, { revised, consoleUrl }) {
 
     ${secLabel("Ready to deploy")}
     <div style="font-size:12.5px;color:#374151;line-height:1.6;">${peopleLine(clean.people.ready, r => `${r.name} (${r.fleet})${r.date ? " — " + r.date : ""}`)}</div>
-    ${clean.people.joined.length ? `<div style="font-size:12.5px;color:#374151;margin-top:4px;"><b style="color:${NAVY};">Joined:</b> ${peopleLine(clean.people.joined, r => `${r.name} (${r.fleet})`)}</div>` : ""}
+    ${clean.people.joined.length ? `<div style="font-size:12.5px;color:#374151;margin-top:4px;"><b style="color:${NAVY};">Joined:</b> ${peopleLine(clean.people.joined, r => `${r.name} (${r.fleet})${r.date ? " — " + r.date : ""}`)}</div>` : ""}
 
     ${secLabel("Rejections — " + c.rejected)}
     <div style="font-size:12.5px;color:#374151;line-height:1.6;">${esc(clean.rejectionReasons) || "No breakdown provided"}</div>
@@ -116,6 +116,8 @@ export function renderDigest(clean, digest, { revised, consoleUrl }) {
 
     ${clean.observations ? secLabel("Observations — " + esc(clean.submittedBy)) + `<div style="font-size:12.5px;color:#374151;line-height:1.6;">${esc(clean.observations)}</div>` : ""}
 
+    ${warnings && warnings.length ? `<div style="border-left:3px solid #fab219;background:#FDF8EC;border-radius:0 8px 8px 0;padding:10px 14px;margin-top:16px;font-size:12px;color:${NAVY};">${warnings.map(esc).join("<br>")}</div>` : ""}
+
     <div style="margin-top:20px;"><a href="${consoleUrl}" style="display:inline-block;background:${NAVY};color:#fff;text-decoration:none;font-size:12px;font-weight:600;letter-spacing:.5px;padding:11px 20px;border-radius:6px;">View full history <span style="color:${GREEN};">&rarr;</span> CIMS Console</a></div>
   </div>`;
 
@@ -125,29 +127,29 @@ export function renderDigest(clean, digest, { revised, consoleUrl }) {
 export function renderInvite(monthName, formUrl) {
   const inner = `
   <div style="padding:24px;">
-    <div style="font-size:19px;font-weight:700;color:${NAVY};">Hi Yanna — ${esc(monthName.split(" ")[0])} is closed.</div>
-    <p style="font-size:13px;color:#374151;line-height:1.65;margin:10px 0 0;">Time for the monthly recruitment submission. It covers <b style="color:${NAVY};">${esc(monthName)}</b> — final numbers only, the month is done. About <b style="color:${NAVY};">10 minutes</b>.</p>
+    <div style="font-size:19px;font-weight:700;color:${NAVY};">${esc(monthName.split(" ")[0])} is closed — the form is open.</div>
+    <p style="font-size:13px;color:#374151;line-height:1.65;margin:10px 0 0;">Time for the monthly recruitment submission covering <b style="color:${NAVY};">${esc(monthName)}</b> — final numbers only, the month is done. The form saves as you type, so each of you can complete your part at different times.</p>
     <div style="background:${CLOUD};border-radius:8px;padding:14px 16px;margin-top:14px;font-size:12.5px;color:#374151;line-height:1.8;">
-      <span style="color:${GREEN};font-weight:700;">1</span>&nbsp; Open the form and fill in your counts and rows<br>
-      <span style="color:${GREEN};font-weight:700;">2</span>&nbsp; Hit <b style="color:${NAVY};">Submit</b><br>
-      <span style="color:${GREEN};font-weight:700;">3</span>&nbsp; The update is compiled and emailed to Miguel, Rita &amp; the team instantly — you get your own copy to present from
+      <span style="color:${GREEN};font-weight:700;">Part 1</span>&nbsp; <b style="color:${NAVY};">Recruitment Admin</b> — sourcing channels, pipeline counts, fleet, rejections<br>
+      <span style="color:${GREEN};font-weight:700;">Part 2</span>&nbsp; <b style="color:${NAVY};">Crew Admin</b> — pre-filled from the CIMS Console; review, adjust, add<br>
+      <span style="color:${GREEN};font-weight:700;">Submit</span>&nbsp; sends the compiled update to Miguel, Rita &amp; the team instantly
     </div>
     <div style="margin-top:18px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form &rarr;</a></div>
     <p style="font-size:11px;color:${LIGHT};margin:12px 0 0;line-height:1.6;">Please submit within 3 days. Made a mistake after submitting? Submit the same month again — the new email goes out marked REVISED.</p>
   </div>`;
-  return shell(inner, "Sent automatically on the first Monday of each month · CIMS — Cruise Industry Managed Services · A division of DG3");
+  return shell(inner, "Sent automatically on the first Monday of each month to the Recruitment Admin and Crew Admin · CIMS — A division of DG3");
 }
 
 export function renderReminder(monthName, formUrl) {
   const inner = `
   <div style="padding:24px;">
-    <div style="font-size:19px;font-weight:700;color:${NAVY};">Quick reminder, Yanna</div>
+    <div style="font-size:19px;font-weight:700;color:${NAVY};">Quick reminder</div>
     <div style="border-left:3px solid #fab219;background:#FDF8EC;border-radius:0 8px 8px 0;padding:11px 14px;margin-top:12px;">
       <p style="font-size:13px;color:${NAVY};margin:0;">The <b>${esc(monthName)}</b> update hasn't been submitted yet. The team is waiting on this month's numbers.</p>
     </div>
-    <p style="font-size:13px;color:#374151;line-height:1.65;margin:12px 0 0;">Ten minutes and it's done — the email to Miguel, Rita &amp; the team goes out the moment you submit.</p>
+    <p style="font-size:13px;color:#374151;line-height:1.65;margin:12px 0 0;">Anything already typed is saved as a draft — pick up where you left off and hit Submit. The email to Miguel, Rita &amp; the team goes out the moment it's in.</p>
     <div style="margin-top:16px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form &rarr;</a></div>
-    <p style="font-size:11px;color:${LIGHT};margin:12px 0 0;line-height:1.6;">This is the only reminder — no further follow-ups are sent. If you're unavailable this month, your backup can submit using the same link.</p>
+    <p style="font-size:11px;color:${LIGHT};margin:12px 0 0;line-height:1.6;">This is the only reminder — no further follow-ups are sent.</p>
   </div>`;
   return shell(inner, "Sent once, 3 days after the invitation if no submission received · CIMS — A division of DG3");
 }
