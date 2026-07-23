@@ -2,5 +2,5 @@
   "name": "cims-recruitment",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test test/lib.test.js" }
+  "scripts": { "test": "node --test test/lib.test.js test/funnel.test.js" }
 }

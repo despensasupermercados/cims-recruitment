@@ -3,10 +3,15 @@
 // (fixed SELECTs in src/consoleData.js — this worker can never write there).
 
 import { PAGE_HTML, LOCKED_HTML } from "./page.js";
-import { RECIPIENTS, ADMINS, FROM, FORM_URL, CONSOLE_URL, AIRTABLE, FLEETS } from "./config.js";
+import { RECIPIENTS, ADMINS, FROM, FORM_URL, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL } from "./config.js";
 import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday } from "./lib.js";
 import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
+import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
+import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS } from "./funnelLib.js";
+import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, cf } from "./candidates.js";
+import { renderTestInvite, renderPass, renderFail, renderAdminPassNotify } from "./funnelEmails.js";
+import { CANDIDATES } from "./config.js";
 
 const AT_API = "https://api.airtable.com/v0";
 
@@ -195,6 +200,126 @@ async function handleSubmit(body, env) {
 }
 
 // ---------------------------------------------------------------------------
+// Applicant funnel (Phase 1): apply → test invite → verify → verdict.
+// Gates are code (SOP v1.1, funnelLib.THRESHOLDS). AI is nowhere in this path.
+// ---------------------------------------------------------------------------
+const CF = CANDIDATES.fields;
+
+async function handleApply(body, env) {
+  const { ok, errors, clean } = validateApplication(body);
+  if (!ok) return json({ ok: false, errors }, 400);
+
+  const existing = await findCandidateByEmail(env, clean.email);
+  if (existing) {
+    const verdict = cf(existing, "verdict");
+    if (verdict === "Auto-Rejected") {
+      const tested = cf(existing, "dateTested") || "";
+      const days = tested ? (Date.now() - new Date(tested + "T00:00:00Z").getTime()) / 86400000 : 9999;
+      if (days < FUNNEL.cooldownDays) {
+        await updateCandidate(env, existing.id, {}, cf(existing, "audit"),
+          "Re-application attempt during 12-month cooldown — declined automatically.");
+        return json({ ok: false, errors: ["An application from this email was concluded recently. You are welcome to apply again 12 months after your previous assessment."] }, 400);
+      }
+      // Cooldown over: reset the record for a fresh run.
+      await updateCandidate(env, existing.id, {
+        [CF.stage]: "Applied", [CF.verdict]: "Pending Test", [CF.resultId]: "",
+        [CF.phone]: clean.phone, [CF.position]: clean.position, [CF.source]: clean.source,
+        [CF.dateApplied]: new Date().toISOString().slice(0, 10),
+      }, cf(existing, "audit"), "Re-application after cooldown — record reset to Pending Test.");
+      await sendInvite(env, clean.name, clean.email);
+      return json({ ok: true });
+    }
+    if (verdict === "Pending Test" || verdict === "Expired — No Test") {
+      await updateCandidate(env, existing.id, { [CF.verdict]: "Pending Test" }, cf(existing, "audit"), "Duplicate application — test invite re-sent.");
+      await sendInvite(env, cf(existing, "name") || clean.name, clean.email);
+      return json({ ok: true });
+    }
+    return json({ ok: false, errors: ["An application with this email is already in progress. Our recruitment team will contact you — no need to re-apply."] }, 400);
+  }
+
+  const rec = await createCandidate(env, clean, "Applied via " + (body.door === "admin" ? "admin upload" : "public page") + " (" + clean.source + "). Test invite sent.");
+  await sendInvite(env, clean.name, clean.email);
+  return json({ ok: true, id: rec.id });
+}
+
+async function sendInvite(env, name, email) {
+  if (!env.RESEND_API_KEY) return;
+  await sendEmail(env, {
+    to: [email],
+    subject: "Your DG3 CIMS application — one step left: the assessment",
+    html: renderTestInvite(name, FUNNEL.testUrl, FORM_URL + "/verify"),
+  });
+}
+
+async function handleVerify(body, env) {
+  if (body.website) return json({ ok: false, errors: ["Spam check failed."] }, 400);
+  const email = String(body.email || "").trim().toLowerCase();
+  const resultId = String(body.resultId || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ ok: false, errors: ["A valid email address is required."] }, 400);
+  if (!validResultId(resultId)) return json({ ok: false, errors: ["That does not look like a Result ID — it is a 24-character code from your results page."] }, 400);
+
+  const rec = await findCandidateByEmail(env, email);
+  if (!rec) return json({ ok: false, errors: ["No application found for this email. Please apply first — the email must match your application exactly."] }, 400);
+  const verdict = cf(rec, "verdict");
+  if (verdict !== "Pending Test") return json({ ok: false, errors: ["This application's assessment has already been processed. Check your email for the outcome."] }, 400);
+
+  const used = await findCandidateByResultId(env, resultId);
+  if (used && used.id !== rec.id) {
+    await updateCandidate(env, rec.id, {}, cf(rec, "audit"), "SECURITY: submitted a Result ID already used by another candidate (" + resultId + ").");
+    return json({ ok: false, errors: ["This Result ID has already been used. Please take the test yourself and submit your own Result ID."] }, 400);
+  }
+
+  const res = await fetch(FUNNEL.resultUrl + resultId, { headers: { "user-agent": "CIMS-Recruitment/1.0 (+https://recruitment.cims.work)" } });
+  if (res.status === 404) return json({ ok: false, errors: ["We could not find a result with that ID — please check it for typos and try again."] }, 400);
+  if (!res.ok) return json({ ok: false, errors: ["The assessment provider is temporarily unavailable. Please try again in a few minutes."] }, 502);
+  const scores = parseBigFiveHtml(await res.text());
+  if (!scores) {
+    await updateCandidate(env, rec.id, {}, cf(rec, "audit"), "Result " + resultId + " fetched but scores could not be parsed — needs manual review.");
+    return json({ ok: false, errors: ["We could not read that result automatically. The recruitment team has been notified and will review it manually."] }, 500);
+  }
+
+  const { fit, verdict: gate, failedGuards } = applyGates(scores);
+  const verdictLabel = gate === "priority" ? "Passed — Priority" : gate === "pass" ? "Passed" : "Auto-Rejected";
+  const name = cf(rec, "name") || email;
+  const today = new Date().toISOString().slice(0, 10);
+
+  await updateCandidate(env, rec.id, {
+    [CF.resultId]: resultId,
+    [CF.b5N]: scores.N, [CF.b5E]: scores.E, [CF.b5O]: scores.O, [CF.b5A]: scores.A, [CF.b5C]: scores.C,
+    [CF.fitScore]: fit,
+    [CF.verdict]: verdictLabel,
+    [CF.thresholdVersion]: THRESHOLDS.version,
+    [CF.dateTested]: today,
+    [CF.stage]: gate === "reject" ? "Tested — Rejected" : "Tested — Passed",
+    ...(gate === "reject" ? { [CF.rejectionReason]: "Failed Big 5 / psych" } : {}),
+  }, cf(rec, "audit"),
+    "Result " + resultId + " scored: N" + scores.N + " E" + scores.E + " O" + scores.O + " A" + scores.A + " C" + scores.C +
+    " → Fit " + fit + " → " + verdictLabel + " (thresholds " + THRESHOLDS.version +
+    (failedGuards.length ? "; guards failed: " + failedGuards.join(",") : "") + ").");
+
+  if (env.RESEND_API_KEY) {
+    if (gate === "reject") {
+      await sendEmail(env, { to: [email], subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
+    } else {
+      await sendEmail(env, { to: [email], subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
+      const notify = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
+      if (notify.length) {
+        await sendEmail(env, {
+          to: notify,
+          subject: "Candidate passed screening — " + name + " (Fit " + fit + (gate === "priority" ? ", PRIORITY" : "") + ")",
+          html: renderAdminPassNotify({
+            name, email, fit, priority: gate === "priority",
+            position: cf(rec, "position") || "", source: cf(rec, "source") || "",
+            phone: cf(rec, "phone") || "", shipboard: !!cf(rec, "shipboard"),
+          }, ""),
+        });
+      }
+    }
+  }
+  return json({ ok: true });
+}
+
+// ---------------------------------------------------------------------------
 // Cron: invitation (first Monday) + reminder (Thursday after, if not submitted)
 // ---------------------------------------------------------------------------
 async function handleScheduled(env) {
@@ -248,6 +373,20 @@ export default {
       if (!keyOk(env, url.searchParams.get("k"))) return json({ ok: false }, 403);
       try { return await handleContext(url, env); }
       catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+    }
+    // --- applicant funnel (public — no key; staff surfaces stay keyed) ---
+    if (req.method === "GET" && url.pathname === "/apply") {
+      return new Response(APPLY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (req.method === "GET" && url.pathname === "/verify") {
+      return new Response(VERIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (req.method === "POST" && (url.pathname === "/api/apply" || url.pathname === "/api/verify")) {
+      let body;
+      try { body = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
+      try {
+        return url.pathname === "/api/apply" ? await handleApply(body, env) : await handleVerify(body, env);
+      } catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
     }
     if (req.method === "POST" && (url.pathname === "/api/draft" || url.pathname === "/api/submit")) {
       let body;

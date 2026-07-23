@@ -81,3 +81,53 @@ export const AIRTABLE = {
 
 // Fleets in display order.
 export const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
+
+// --- Applicant funnel -------------------------------------------------------
+// Funnel notifications go to the two interviewers directly (per Miguel, 2026-07-23).
+export const FUNNEL = {
+  notify: ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"],
+  testUrl: "https://bigfive-test.com/test",
+  resultUrl: "https://bigfive-test.com/result/", // + result ID (server-side fetch)
+  cooldownDays: 365, // rejected applicants may re-apply after 12 months (SOP v1.1 §10)
+};
+
+// "Candidates" table — system of record for the applicant funnel.
+export const CANDIDATES = {
+  tableId: "tblTGIe5G8BJ96ohU",
+  fields: {
+    name:        "fld0wD08Z2wv3IosD", // Candidate Name (primary)
+    fleet:       "fldiyDnYecI4MQcBX",
+    source:      "fldsV5GCWnVuuh9qO",
+    stage:       "fld72eW30dguQo9Ma",
+    hireType:    "fldmlArveXi4W8X2z",
+    dateApplied: "fldwwilDEiPYMieeS",
+    dateInterviewed: "fldSEDCnuI9MW3Aq7",
+    dateApproved: "fldwS3dK4ECvAFUPV",
+    rejectionReason: "fldXyhb459RhKHbEL",
+    notes:       "fld8TSLc8O89Q2lhO",
+    email:       "fldGuWpt2piAlViMg",
+    phone:       "fldCsTCeIO7deYy7Z",
+    position:    "fldDny1wqOZBXKZQd",
+    referrer:    "fldBWPjUzIyaLMotF",
+    shipboard:   "fldm0oodujyKJuNGT",
+    printer:     "fldGM8tGi6TCQTwCB",
+    resultId:    "fldIUPdl4VsuZp70U",
+    b5N:         "flddV60T2Qb3GxVA8",
+    b5E:         "fldJKqs94djBrFwdC",
+    b5O:         "fldEZtNGj9rrBVRVg",
+    b5A:         "fldd18uNJFkqW49kv",
+    b5C:         "fldajRjFjCp9aBepD",
+    fitScore:    "flddzyuZDiHPdlbZh",
+    verdict:     "fldYCmywbulPazZuw",
+    thresholdVersion: "fld2va1WDladrSkSc",
+    interviewer: "fldtWVCJpGgGfgz7l",
+    resume:      "fldRIcjINQ7WXkavG",
+    consent:     "fld3OkD6u5CIgHgpy",
+    aiSummary:   "fldXnF8gJnNH73NDl",
+    aiBrief:     "fldDe8grbA4PPjVFy",
+    audit:       "fldFBqA6ynTMLJHiG",
+    dateTested:  "fldgAIG590l3JBeUs",
+    dateEndorsed: "fld90Hocw9kpqA2Bv",
+    dateFinal:   "fldW6CSH3z3eP8ooh",
+  },
+};
