@@ -107,6 +107,8 @@ export const PAGE_HTML = `<!DOCTYPE html>
   .tray-chip { font-size:11.5px; font-weight:600; color:var(--navy); background:var(--cloud); border:1px solid var(--border); border-radius:999px; padding:6px 12px; cursor:pointer; }
   .tray-chip:hover { background:#EAF5E3; border-color:#D8ECCC; }
   .tray-chip small { color:var(--light-slate); font-weight:500; }
+  .tray-chip.passive { cursor:default; }
+  .tray-chip.passive:hover { background:var(--cloud); border-color:var(--border); }
   .tray-label { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--light-slate); margin-bottom:6px; }
 
   .ta-wrap { position:relative; }
@@ -183,13 +185,12 @@ export const PAGE_HTML = `<!DOCTYPE html>
 
   <div class="card">
     <div class="sec-label">1 &middot; Sourcing Channels</div>
-    <div class="sec-hint">Where the in-process candidates came from — must add up to In process below.</div>
+    <div class="sec-hint">Where the in-process candidates came from.</div>
     <div class="row c3">
       <div><label>TCMS website</label><input type="number" min="0" id="ch_tcms"></div>
       <div><label>Crew referrals</label><input type="number" min="0" id="ch_referrals"></div>
       <div><label>Walk-ins</label><input type="number" min="0" id="ch_walkins"></div>
     </div>
-    <div class="check" id="chCheck"><b>&#10003;</b> Channels add up to In process</div>
   </div>
 
   <div class="card">
@@ -211,7 +212,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
     <div class="sec-label">3 &middot; By Fleet</div>
     <div class="sec-hint">Candidate stages entered per fleet. Ready and Joined compute themselves from Part 2 — no double entry.</div>
     <table class="matrix" id="matrix"></table>
-    <div class="check" id="matrixCheck"><b>&#10003;</b> Fleet totals match pipeline counts</div>
+    <div class="check" id="matrixCheck"><b>&#10003;</b> <span>Fleet totals match pipeline counts</span></div>
   </div>
 
   <div class="card">
@@ -241,8 +242,8 @@ export const PAGE_HTML = `<!DOCTYPE html>
 
   <div class="card">
     <div class="sec-label">5 &middot; Ready to Deploy</div>
-    <div class="sec-hint">Candidates and returning crew cleared to deploy. Earmarked crew from the console appear below — tap to add.</div>
-    <div class="tray-label" id="trayLabel" style="display:none">From the console — Earmarked crew, tap to add</div>
+    <div class="sec-hint">Crew awaiting assignment — no ship on record, not Earmarked, not retired — appear below from the console; tap to add. Candidates cleared for first deployment: add manually.</div>
+    <div class="tray-label" id="trayLabel" style="display:none">From the console — awaiting assignment, tap to add</div>
     <div class="tray" id="tray"></div>
     <div class="prow ready rowhead"><label>Name</label><label>Fleet</label><label>Join date</label><label>Source</label><label></label></div>
     <div id="rows_ready"></div>
@@ -250,7 +251,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
   </div>
 
   <div class="card">
-    <div class="sec-label">6 &middot; Joined This Month</div>
+    <div class="sec-label">6 &middot; This Month Deployments</div>
     <div class="sec-hint">Pre-filled: contract sign-ons in the reporting month, from the console.</div>
     <div class="prow joined rowhead"><label>Name</label><label>Fleet</label><label>Signed on</label><label>Source</label><label></label></div>
     <div id="rows_joined"></div>
@@ -259,7 +260,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
 
   <div class="card">
     <div class="sec-label">7 &middot; Visa &amp; Medical Issues</div>
-    <div class="sec-hint">Pre-filled: renewals due or overdue for active crew. New-hire cases: add manually.</div>
+    <div class="sec-hint">Pre-filled: visas &amp; medicals expiring inside the reporting month only. New-hire cases: add manually.</div>
     <div class="prow visa rowhead"><label>Name</label><label>Fleet</label><label>Type</label><label>Note</label><label></label></div>
     <div id="rows_visa"></div>
     <button type="button" class="addrow" data-add="visa">+ Add case</button>
@@ -267,7 +268,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
 
   <div class="card">
     <div class="sec-label">8 &middot; Compliance Flags</div>
-    <div class="sec-hint">Pre-filled: every document expiring in the next 120 days, straight from crew records. Red = already expired.</div>
+    <div class="sec-hint">Pre-filled: documents expired or expiring within 30 days of the report, from crew records. Red = already expired.</div>
     <div class="prow doc rowhead"><label>Crew name</label><label>Document</label><label>Expires</label><label>Source</label><label></label></div>
     <div id="rows_doc"></div>
     <button type="button" class="addrow" data-add="doc">+ Add document</button>
@@ -288,19 +289,13 @@ export const PAGE_HTML = `<!DOCTYPE html>
       <div><label>Roles to source now</label><input type="text" id="fc_roles" placeholder="e.g. 20 Printer Specialists — new ship"></div>
     </div>
     <div class="outlook" id="outlook" style="display:none"></div>
+    <div class="tray-label" id="soTrayLabel" style="display:none; margin-top:12px;">From the console — projected sign-offs, next 90 days</div>
+    <div class="tray" id="soTray"></div>
   </div>
 
   <div class="card">
-    <div class="sec-label">11 &middot; Candidate Feedback</div>
-    <div class="row c2">
-      <div><label>Positive</label><input type="text" id="fb_pos" placeholder="e.g. Crew Referral Program"></div>
-      <div><label>Pain point</label><input type="text" id="fb_pain" placeholder="e.g. Policy on rejected applicants"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="sec-label">12 &middot; Decisions &amp; Observations</div>
-    <div class="field"><label>Decisions needed from Miguel — write NONE if nothing needs a call</label>
+    <div class="sec-label">11 &middot; Decisions &amp; Observations</div>
+    <div class="field"><label>Decisions needed from DG3 HR — write NONE if nothing needs a call</label>
       <input type="text" id="decisions" placeholder="NONE"></div>
     <div class="field"><label>Observations — anything the team should know</label>
       <textarea id="observations" placeholder="Incidents, process friction, candidate stories, cost issues&hellip;"></textarea></div>
@@ -497,13 +492,6 @@ export const PAGE_HTML = `<!DOCTYPE html>
     var mc = byId("matrixCheck");
     mc.className = allOk ? "check" : "check bad";
     mc.innerHTML = allOk ? "<b>&#10003;</b> Fleet totals match pipeline counts" : "<b>&#10007;</b> Fleet totals do not match the pipeline counts above";
-
-    var chSum = num(byId("ch_tcms")) + num(byId("ch_referrals")) + num(byId("ch_walkins"));
-    var ip = byId("c_inProcess");
-    var chOk = ip.value === "" || chSum === num(ip);
-    var cc = byId("chCheck");
-    cc.className = chOk ? "check" : "check bad";
-    cc.innerHTML = chOk ? "<b>&#10003;</b> Channels add up to In process" : "<b>&#10007;</b> Channels total " + chSum + " but In process is " + num(ip);
   }
 
   // --- payload
@@ -533,7 +521,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
       compliance: collectRows("doc"),
       forecast: { joiners: byId("fc_joiners").value, roles: byId("fc_roles").value },
       signoffOutlook: byId("outlook").getAttribute("data-n") || "0",
-      feedback: { positive: byId("fb_pos").value, pain: byId("fb_pain").value },
+      feedback: { positive: "", pain: "" },
       decisions: byId("decisions").value,
       observations: byId("observations").value
     };
@@ -569,19 +557,11 @@ export const PAGE_HTML = `<!DOCTYPE html>
     var fc = p.forecast || {};
     byId("fc_joiners").value = fc.joiners !== undefined ? fc.joiners : "";
     byId("fc_roles").value = fc.roles || "";
-    byId("fb_pos").value = (p.feedback || {}).positive || "";
-    byId("fb_pain").value = (p.feedback || {}).pain || "";
     byId("decisions").value = p.decisions || "";
     byId("observations").value = p.observations || "";
   }
 
   // --- context load
-  function showOutlook(n) {
-    var o = byId("outlook");
-    o.style.display = "block";
-    o.setAttribute("data-n", String(n));
-    o.innerHTML = "Console: <b>" + n + " projected sign-offs</b> in the next 60 days — relief demand to plan against.";
-  }
   function applyPrefill(pf) {
     if (!pf) {
       byId("consoleNote").style.display = "none";
@@ -594,13 +574,13 @@ export const PAGE_HTML = `<!DOCTYPE html>
     (pf.compliance || []).forEach(function (d) { addRow("doc", { name: d.name, doc: d.doc, expires: d.expires, overdue: d.overdue, src: "console" }); });
     var tray = byId("tray");
     tray.innerHTML = "";
-    if ((pf.earmarked || []).length) {
+    if ((pf.awaiting || []).length) {
       byId("trayLabel").style.display = "block";
-      pf.earmarked.forEach(function (e) {
+      pf.awaiting.forEach(function (e) {
         var chip = document.createElement("button");
         chip.type = "button";
         chip.className = "tray-chip";
-        chip.innerHTML = e.name + " <small>" + (e.fleet || "&mdash;") + "</small>";
+        chip.innerHTML = e.name + " <small>" + (e.fleet || "awaiting") + "</small>";
         chip.addEventListener("click", function () {
           addRow("ready", { name: e.name, fleet: e.fleet, src: "console" });
           chip.remove();
@@ -609,7 +589,23 @@ export const PAGE_HTML = `<!DOCTYPE html>
         tray.appendChild(chip);
       });
     }
-    if (pf.signoffOutlook !== undefined) showOutlook(pf.signoffOutlook);
+    var soTray = byId("soTray");
+    soTray.innerHTML = "";
+    if ((pf.upcoming || []).length) {
+      byId("soTrayLabel").style.display = "block";
+      pf.upcoming.forEach(function (u) {
+        var chip = document.createElement("span");
+        chip.className = "tray-chip passive";
+        chip.innerHTML = u.name + " <small>" + (u.ship || u.fleet || "") + " &middot; " + u.date + "</small>";
+        soTray.appendChild(chip);
+      });
+    }
+    if (pf.signoffOutlook !== undefined) {
+      var o = byId("outlook");
+      o.style.display = "block";
+      o.setAttribute("data-n", String(pf.signoffOutlook));
+      o.innerHTML = "Console: <b>" + pf.signoffOutlook + " projected sign-offs</b> in the next 60 days — relief demand to plan against.";
+    }
   }
 
   function loadContext() {
@@ -620,7 +616,12 @@ export const PAGE_HTML = `<!DOCTYPE html>
         if (res.record && res.record.payload) {
           CREW = (res.prefill && res.prefill.crewNames) || [];
           restore(res.record.payload);
-          if (res.prefill && res.prefill.signoffOutlook !== undefined) showOutlook(res.prefill.signoffOutlook);
+          if (res.prefill && res.prefill.signoffOutlook !== undefined) {
+            var o = byId("outlook");
+            o.style.display = "block";
+            o.setAttribute("data-n", String(res.prefill.signoffOutlook));
+            o.innerHTML = "Console: <b>" + res.prefill.signoffOutlook + " projected sign-offs</b> in the next 60 days — relief demand to plan against.";
+          }
           if (!res.prefill) { byId("consoleNote").style.display = "none"; byId("consoleWarn").style.display = "flex"; }
           byId("revisedNote").style.display = res.record.status === "Submitted" ? "block" : "none";
         } else {
