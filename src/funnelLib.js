@@ -102,3 +102,60 @@ export function validateApplication(payload) {
   };
   return { ok: errors.length === 0, errors, clean };
 }
+
+// --- Final-interview scheduling ---------------------------------------------
+// Finals are Mondays 08:00 Miami, skipping US + PH holidays (Miguel: same rule always).
+
+/** US federal holidays that can land on a Monday + PH regular holidays, rule-based. */
+export function isFinalHoliday(iso) {
+  const d = new Date(iso + "T00:00:00Z");
+  const m = d.getUTCMonth() + 1, day = d.getUTCDate(), dow = d.getUTCDay();
+  const nthMon = Math.ceil(day / 7);
+  const fixed = new Set(["01-01", "06-19", "07-04", "11-11", "12-25", // US fixed
+    "04-09", "05-01", "06-12", "08-21", "11-30", "12-30"]);          // PH regular
+  const mmdd = String(m).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+  if (fixed.has(mmdd)) return true;
+  if (dow === 1) { // Monday-anchored: US MLK, Presidents, Memorial, Labor, Columbus; PH National Heroes
+    if (m === 1 && nthMon === 3) return true;
+    if (m === 2 && nthMon === 3) return true;
+    if (m === 5 && day > 24) return true;            // last Monday of May
+    if (m === 9 && nthMon === 1) return true;
+    if (m === 10 && nthMon === 2) return true;
+    if (m === 8 && day > 24) return true;            // PH National Heroes Day — last Monday of August
+  }
+  return false;
+}
+
+/** Next available Monday strictly after `fromIso`, skipping holidays. Returns ISO date. */
+export function nextFinalMonday(fromIso) {
+  const d = new Date(fromIso + "T00:00:00Z");
+  do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() !== 1);
+  let iso = d.toISOString().slice(0, 10);
+  while (isFinalHoliday(iso)) {
+    d.setUTCDate(d.getUTCDate() + 7);
+    iso = d.toISOString().slice(0, 10);
+  }
+  return iso;
+}
+
+/** Miami is UTC-4 during US DST (2nd Sunday March → 1st Sunday November), else UTC-5. */
+export function miamiIsDst(iso) {
+  const [y, m, day] = iso.split("-").map(Number);
+  const nthSunday = (year, month, n) => {
+    const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+    return 1 + ((7 - first) % 7) + (n - 1) * 7;
+  };
+  if (m > 3 && m < 11) return true;
+  if (m === 3) return day >= nthSunday(y, 3, 2);
+  if (m === 11) return day < nthSunday(y, 11, 1);
+  return false;
+}
+
+/** Human string for the final-interview slot, both timezones correct for the date. */
+export function finalSlotText(iso) {
+  const manila = miamiIsDst(iso) ? "20:00" : "21:00";
+  const d = new Date(iso + "T00:00:00Z");
+  const label = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()] + " " +
+    d.getUTCDate() + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()] + " " + d.getUTCFullYear();
+  return label + " — 08:00 Miami / " + manila + " Manila";
+}

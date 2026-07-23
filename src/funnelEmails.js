@@ -108,3 +108,97 @@ export function renderParseFailAlert(name, email, resultId) {
   </div>`;
   return shell(inner, FOOT_TEAM, CTX_TEAM);
 }
+
+// --- Phase 2b: endorsement & final-interview emails (unified shell) ----------
+
+const btnRed = (href, label) => `<a href="${href}" style="display:inline-block;background:#C2402F;color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 22px;border-radius:8px;">${label}</a>`;
+const btnGreenInline = (href, label) => `<a href="${href}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 22px;border-radius:8px;">${label}</a>`;
+
+function profileTable(c) {
+  return `<div style="background:${CLOUD};border-radius:8px;padding:12px 16px;margin-top:14px;">
+  <table cellpadding="0" cellspacing="0">
+    ${factRow("Fit Score", `<b style="color:${NAVY};font-size:15px;">${esc(String(c.fit))}</b> ${c.priority ? `<span style="color:${GREEN};font-weight:700;font-size:11px;">PRIORITY</span>` : ""}`)}
+    ${factRow("Position", esc(c.position || "—"))}
+    ${factRow("Source", esc(c.source || "—") + (c.referrer ? " (" + esc(c.referrer) + ")" : ""))}
+    ${factRow("Experience", (c.shipboard ? "Shipboard" : "First-time") + (c.printer ? " · Printer" : ""))}
+    ${c.resumeUrl ? factRow("Resume", `<a href="${c.resumeUrl}" style="color:#1E6FD0;">Open resume</a>`) : ""}
+  </table></div>`;
+}
+
+/** To Ray & Rolando — one candidate, Approve/Decline authorizes ARRANGING the final. */
+export function renderEndorsement(c, approveUrl, declineUrl, slotText) {
+  const inner = `<div style="padding:24px;">
+    ${title("New candidate for final interview — " + esc(c.name))}
+    ${para(`<b style="color:${NAVY};">${esc(c.interviewer || "The recruitment team")}</b> has interviewed this candidate and recommends advancing to the final interview.`)}
+    ${profileTable(c)}
+    ${c.recommendation ? `<div style="margin-top:12px;">${secLabelLike("Recommendation")}<div style="font-size:12.5px;color:#374151;line-height:1.6;">${esc(c.recommendation)}</div></div>` : ""}
+    ${c.aiBrief ? `<div style="margin-top:12px;">${secLabelLike("Assessment brief")}<div style="font-size:12px;color:#4b5563;line-height:1.6;">${esc(c.aiBrief)}</div></div>` : ""}
+    ${para(`If you approve, I will arrange the final interview for <b style="color:${NAVY};">${esc(slotText)}</b> and coordinate the video call with the applicant.`)}
+    <table cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+      <td style="padding-right:10px;">${btnGreenInline(approveUrl, "Approve — arrange the interview")}</td>
+      <td>${btnRed(declineUrl, "Decline")}</td>
+    </tr></table>
+    ${small("Either of you can approve — the first response is recorded. The hiring decision remains yours in the live interview; this only authorizes scheduling it.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}
+
+function secLabelLike(t) {
+  return `<div style="font-size:9px;font-weight:700;color:${GREEN};letter-spacing:2.5px;text-transform:uppercase;margin:0 0 4px;">${t}</div>`;
+}
+
+/** To the applicant — the confirmed final-interview slot. */
+export function renderFinalInviteApplicant(name, slotText) {
+  const inner = `<div style="padding:24px;">
+    ${title("Your final interview is scheduled")}
+    ${para(`Dear ${esc(first(name))},`)}
+    ${para("Congratulations on reaching the final stage of the DG3 CIMS recruitment process. Your final interview with our management team is scheduled for:")}
+    <div style="background:${CLOUD};border-radius:8px;padding:14px 16px;margin-top:12px;font-size:15px;font-weight:700;color:${NAVY};text-align:center;">${esc(slotText)}</div>
+    ${para("Our recruitment team will contact you with the video-call link and any details you need. Please confirm your availability by replying to this email.")}
+    ${para("We look forward to meeting you.")}
+  </div>`;
+  return shell(inner, FOOT_APPLICANT, CTX_APPLICANT);
+}
+
+/** To Yanna/April — authorization received, coordinate the call. */
+export function renderFinalCoordination(c, slotText, by) {
+  const inner = `<div style="padding:24px;">
+    ${title("Approved — final interview to coordinate")}
+    ${para(`<b style="color:${NAVY};">${esc(by)}</b> approved <b style="color:${NAVY};">${esc(c.name)}</b> for the final interview. The applicant has been invited for:`)}
+    <div style="background:${CLOUD};border-radius:8px;padding:12px 16px;margin-top:12px;font-size:14px;font-weight:700;color:${NAVY};text-align:center;">${esc(slotText)}</div>
+    ${para("Please set up the Zoom/Teams call and confirm the applicant received the invitation. Once the interview happens, record the outcome on the candidate record.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}
+
+/** To Yanna/April — Ray or Rolando declined at endorsement. */
+export function renderDeclineNotify(c, by) {
+  const inner = `<div style="padding:24px;">
+    ${title("Endorsement declined — " + esc(c.name))}
+    ${amber(`<b>${esc(by)}</b> declined the endorsement of <b>${esc(c.name)}</b>. No final interview will be scheduled.`)}
+    ${para("The candidate remains on record. If you believe this should be revisited, follow up with the management team directly.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}
+
+/** To Yanna/April — endorsement still unactioned after N days. */
+export function renderEndorseNudge(c, days) {
+  const inner = `<div style="padding:24px;">
+    ${title("Endorsement still awaiting a response")}
+    ${amber(`Your endorsement of <b>${esc(c.name)}</b> has been awaiting Ray or Rolando for ${days} days with no response yet.`)}
+    ${para("You may want to follow up with the management team directly so the candidate is not left waiting.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}
+
+/** To the GM (Miguel) — a below-threshold candidate proposed for exception (SOP v1.1 §11). */
+export function renderExceptionRequest(c, reason, requestedBy) {
+  const inner = `<div style="padding:24px;">
+    ${title("GM exception requested — " + esc(c.name))}
+    ${para(`<b style="color:${NAVY};">${esc(requestedBy)}</b> is requesting a threshold exception for a candidate who did not pass the SOP v1.1 automated gate.`)}
+    ${profileTable(c)}
+    <div style="margin-top:12px;">${secLabelLike("Justification")}<div style="font-size:12.5px;color:#374151;line-height:1.6;">${esc(reason)}</div></div>
+    ${amber("Per SOP v1.1 §11, only you can approve advancing this candidate. Reply with your written decision — the candidate is held until then.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}

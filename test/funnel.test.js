@@ -72,3 +72,21 @@ test("application validation", () => {
   // referral name dropped when source is not a referral
   assert.equal(validateApplication({ ...good, source: "Walk-in" }).clean.referrer, "");
 });
+
+test("final-interview scheduling: Mondays, holidays skipped, DST correct", async () => {
+  const { nextFinalMonday, isFinalHoliday, miamiIsDst, finalSlotText } = await import("../src/funnelLib.js");
+  // From Wed 2026-07-22 → Mon 2026-07-27 (no holiday)
+  assert.equal(nextFinalMonday("2026-07-22"), "2026-07-27");
+  // From Sun 2026-08-30 → Mon 2026-08-31 is PH National Heroes Day (last Mon Aug) AND
+  // the next Monday 2026-09-07 is US Labor Day → lands on 2026-09-14
+  assert.ok(isFinalHoliday("2026-08-31"));
+  assert.ok(isFinalHoliday("2026-09-07"));
+  assert.equal(nextFinalMonday("2026-08-30"), "2026-09-14");
+  // From a Monday, "next" means the FOLLOWING Monday
+  assert.equal(nextFinalMonday("2026-07-27"), "2026-08-03");
+  // DST: July is EDT (20:00 Manila), December is EST (21:00 Manila)
+  assert.ok(miamiIsDst("2026-07-27"));
+  assert.ok(!miamiIsDst("2026-12-14"));
+  assert.ok(finalSlotText("2026-07-27").includes("20:00 Manila"));
+  assert.ok(finalSlotText("2026-12-14").includes("21:00 Manila"));
+});

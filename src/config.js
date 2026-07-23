@@ -90,6 +90,14 @@ export const FUNNEL = {
   testUrl: "https://bigfive-test.com/test",
   resultUrl: "https://bigfive-test.com/result/", // + result ID (server-side fetch)
   cooldownDays: 365, // rejected applicants may re-apply after 12 months (SOP v1.1 §10)
+  // Final-interview approvers. EITHER one's Approve click authorizes arranging the
+  // interview (Miguel: they always work together). The hiring decision stays the live interview.
+  finalApprovers: [
+    { name: "Ray", email: "Ray.Guerra@dg3.com" },
+    { name: "Rolando", email: "Rolando.Abellan@dg3.com" },
+  ],
+  gmEmail: "Miguel.Sanmartin@dg3.com", // GM — sole authority for SOP v1.1 threshold exceptions
+  endorseNudgeDays: 5, // days of silence after endorsement before nudging the endorser
 };
 
 // "Candidates" table — system of record for the applicant funnel.
@@ -130,5 +138,8 @@ export const CANDIDATES = {
     dateTested:  "fldgAIG590l3JBeUs",
     dateEndorsed: "fld90Hocw9kpqA2Bv",
     dateFinal:   "fldW6CSH3z3eP8ooh",
+    actionToken: "fldRBfehOivooCLha",
+    interviewNotes: "fldwrkshmbzbQICUJ",
+    recommendation: "fldlaBTwtwHCTYw70",
   },
 };

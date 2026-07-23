@@ -8,9 +8,11 @@ import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMon
 import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
 import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
-import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS } from "./funnelLib.js";
-import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, cf } from "./candidates.js";
-import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert } from "./funnelEmails.js";
+import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS, nextFinalMonday, finalSlotText } from "./funnelLib.js";
+import { planAdminAction, planDecision } from "./adminLib.js";
+import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, findCandidateById, findCandidateByToken, listAllCandidates, listByStage, cf } from "./candidates.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest } from "./funnelEmails.js";
+import { ADMIN_HTML, REPORTS_HTML } from "./adminPage.js";
 import { CANDIDATES } from "./config.js";
 
 const AT_API = "https://api.airtable.com/v0";
@@ -361,8 +363,154 @@ async function handleVerify(body, env) {
   return json({ ok: true });
 }
 
-// Daily funnel sweep (02:00 UTC): 7-day test reminder, 30-day auto-expiry.
-// Idempotent — the reminder is sent once (marked in the audit log); expiry is terminal.
+// ---------------------------------------------------------------------------
+// Phase 2: admin surface + endorsement engine.
+// List + actions are KEY-GATED (staff). /decide is token-gated (Ray/Rolando click
+// from email, no key) — the unguessable Action Token is the authorization.
+// ---------------------------------------------------------------------------
+
+/** Compact candidate view for the dashboard + emails. */
+function candView(rec) {
+  const fit = cf(rec, "fitScore");
+  return {
+    id: rec.id,
+    name: cf(rec, "name") || "",
+    email: cf(rec, "email") || "",
+    phone: cf(rec, "phone") || "",
+    position: cf(rec, "position") || "",
+    source: cf(rec, "source") || "",
+    referrer: cf(rec, "referrer") || "",
+    shipboard: !!cf(rec, "shipboard"),
+    printer: !!cf(rec, "printer"),
+    fit: fit ?? "",
+    priority: cf(rec, "verdict") === "Passed — Priority",
+    verdict: cf(rec, "verdict") || "",
+    stage: cf(rec, "stage") || "",
+    interviewer: cf(rec, "interviewer") || "",
+    recommendation: cf(rec, "recommendation") || "",
+    aiBrief: cf(rec, "aiBrief") || "",
+    interviewNotes: cf(rec, "interviewNotes") || "",
+    dateApplied: cf(rec, "dateApplied") || "",
+    dateTested: cf(rec, "dateTested") || "",
+    dateEndorsed: cf(rec, "dateEndorsed") || "",
+    dateFinal: cf(rec, "dateFinal") || "",
+    scores: { N: cf(rec, "b5N"), E: cf(rec, "b5E"), O: cf(rec, "b5O"), A: cf(rec, "b5A"), C: cf(rec, "b5C") },
+    resumeUrl: (cf(rec, "resume") && cf(rec, "resume")[0] && cf(rec, "resume")[0].url) || "",
+    rejectionReason: cf(rec, "rejectionReason") || "",
+  };
+}
+
+async function handleAdminList(env) {
+  const rows = await listAllCandidates(env);
+  return json({ ok: true, candidates: rows.map(candView), thresholds: THRESHOLDS });
+}
+
+const notifyTeam = () => FUNNEL.notify.filter(a => a && !isPlaceholder(a));
+
+// Send the emails a plan/decision requested. `c` = candView, `extra` carries per-kind data.
+async function sendPlanEmails(env, emails, c, extra = {}) {
+  if (!env.RESEND_API_KEY) return;
+  for (const e of emails) {
+    if (e.kind === "fail") {
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS application — outcome", html: renderFail(c.name) });
+    } else if (e.kind === "endorsement") {
+      // One email per approver, each carrying their own name in the decide links.
+      for (const ap of FUNNEL.finalApprovers) {
+        const base = FORM_URL + "/decide?t=" + encodeURIComponent(extra.token) + "&by=" + encodeURIComponent(ap.name);
+        await sendEmail(env, {
+          to: [ap.email], cc: notifyTeam(),
+          subject: "Final-interview candidate — " + c.name + " (Fit " + c.fit + (c.priority ? ", PRIORITY" : "") + ")",
+          html: renderEndorsement(c, base + "&a=approve", base + "&a=decline", extra.slotText),
+        });
+      }
+    } else if (e.kind === "exception") {
+      await sendEmail(env, { to: [FUNNEL.gmEmail], cc: notifyTeam(), subject: "GM exception requested — " + c.name, html: renderExceptionRequest(c, e.reason, extra.by || "Recruitment") });
+    } else if (e.kind === "finalApplicant") {
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS final interview is scheduled", html: renderFinalInviteApplicant(c.name, extra.slotText) });
+    } else if (e.kind === "finalCoordination") {
+      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, subject: "Approved — coordinate final interview for " + c.name, html: renderFinalCoordination(c, extra.slotText, e.by) });
+    } else if (e.kind === "declineNotify") {
+      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, subject: "Endorsement declined — " + c.name, html: renderDeclineNotify(c, e.by) });
+    }
+  }
+}
+
+async function handleAdminAction(body, env) {
+  const id = String(body.id || "");
+  const action = String(body.action || "");
+  const rec = await findCandidateById(env, id);
+  if (!rec) return json({ ok: false, errors: ["Candidate not found."] }, 404);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const params = { ...(body.params || {}), today, by: body.by || "Recruitment" };
+  if (action === "endorse") params.token = crypto.randomUUID();
+
+  const plan = planAdminAction(action, { stage: cf(rec, "stage"), verdict: cf(rec, "verdict") }, params);
+  if (!plan.ok) return json({ ok: false, errors: [plan.error] }, 400);
+
+  const fieldMap = {
+    interviewer: CF.interviewer, interviewNotes: CF.interviewNotes, dateInterviewed: CF.dateInterviewed,
+    rejectionReason: CF.rejectionReason, recommendation: CF.recommendation,
+    actionToken: CF.actionToken, dateEndorsed: CF.dateEndorsed,
+  };
+  const fields = { [CF.stage]: plan.stage };
+  for (const [k, v] of Object.entries(plan.fields || {})) if (fieldMap[k]) fields[fieldMap[k]] = v;
+
+  await updateCandidate(env, rec.id, fields, cf(rec, "audit"), plan.audit);
+
+  if (plan.emails && plan.emails.length) {
+    const c = candView(rec);
+    // recommendation just written isn't on the stale rec; patch the view for the email
+    if (params.recommendation) c.recommendation = params.recommendation;
+    let slotText = "";
+    await sendPlanEmails(env, plan.emails, c, { token: params.token, slotText, by: params.by });
+  }
+  return json({ ok: true, stage: plan.stage });
+}
+
+// Ray/Rolando click Approve/Decline from their email. Token is the auth.
+async function handleDecide(url, env) {
+  const token = url.searchParams.get("t") || "";
+  const decision = url.searchParams.get("a") || "";
+  const byRaw = url.searchParams.get("by") || "";
+  const by = FUNNEL.finalApprovers.some(a => a.name === byRaw) ? byRaw : "a manager";
+
+  const rec = await findCandidateByToken(env, token);
+  if (!rec) return decidePage("This link is no longer valid. The decision may already have been recorded.", false);
+
+  const slotIso = nextFinalMonday(new Date().toISOString().slice(0, 10));
+  const slotText = finalSlotText(slotIso);
+  const plan = planDecision(decision, { stage: cf(rec, "stage") }, { by, slotIso, slotText });
+  if (!plan.ok) {
+    if (plan.error === "already-processed") return decidePage("This candidate has already been actioned — nothing more to do here.", true);
+    return decidePage("That action was not understood.", false);
+  }
+
+  const fields = { [CF.stage]: plan.stage };
+  if (plan.fields.dateFinal) fields[CF.dateFinal] = plan.fields.dateFinal;
+  if (plan.fields.actionToken !== undefined) fields[CF.actionToken] = plan.fields.actionToken;
+  await updateCandidate(env, rec.id, fields, cf(rec, "audit"), plan.audit);
+  await sendPlanEmails(env, plan.emails, candView(rec), { slotText, by });
+
+  return decision === "approve"
+    ? decidePage("Approved. The final interview is scheduled for " + slotText + ". The applicant has been invited and the recruitment team will coordinate the call.", true)
+    : decidePage("Recorded — the endorsement was declined. The recruitment team has been notified.", true);
+}
+
+function decidePage(msg, ok) {
+  const color = ok ? "#5FB946" : "#C2402F";
+  const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CIMS Recruitment</title>' +
+    '<style>body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:#EFF3F9;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}' +
+    '.c{max-width:440px;background:#fff;border:1px solid #E4EAF2;border-radius:16px;overflow:hidden;box-shadow:0 12px 30px rgba(18,44,71,.1)}' +
+    '.h{height:4px;background:linear-gradient(90deg,#1B3A5C 60%,#5FB946 60%)}' +
+    '.b{padding:30px 28px;text-align:center}.ic{width:56px;height:56px;border-radius:50%;background:' + color + ';margin:0 auto 16px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px}' +
+    '.t{font-size:15px;color:#1C2A38;line-height:1.6}</style></head><body><div class="c"><div class="h"></div><div class="b">' +
+    '<div class="ic">' + (ok ? '&#10003;' : '&#33;') + '</div><div class="t">' + msg + '</div></div></div></body></html>';
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// Daily funnel sweep (02:00 UTC): 7-day test reminder, 30-day auto-expiry,
+// and 5-day endorsement nudge. Idempotent (audit markers); expiry is terminal.
 async function funnelDaily(env) {
   const rows = await listPendingTests(env);
   for (const rec of rows) {
@@ -383,6 +531,19 @@ async function funnelDaily(env) {
         html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
       });
       await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
+    }
+  }
+  // Endorsement nudge: still awaiting Ray/Rolando after N days.
+  const endorsed = await listByStage(env, "Endorsed — Awaiting Approval");
+  for (const rec of endorsed) {
+    const when = cf(rec, "dateEndorsed");
+    const audit = cf(rec, "audit") || "";
+    if (!when || audit.includes("endorsement nudge sent")) continue;
+    const days = (Date.now() - new Date(when + "T00:00:00Z").getTime()) / 86400000;
+    if (days >= FUNNEL.endorseNudgeDays && env.RESEND_API_KEY) {
+      const who = notifyTeam();
+      if (who.length) await sendEmail(env, { to: who, subject: "Endorsement awaiting a response — " + (cf(rec, "name") || ""), html: renderEndorseNudge(candView(rec), Math.floor(days)) });
+      await updateCandidate(env, rec.id, {}, audit, "Endorsement nudge sent (" + Math.floor(days) + " days awaiting authorization).");
     }
   }
 }
@@ -455,6 +616,32 @@ export default {
     }
     if (req.method === "GET" && url.pathname.startsWith("/files/")) {
       return handleFile(url.pathname, env);
+    }
+    // --- decision link (token-gated; Ray/Rolando click from email, no key) ---
+    if (req.method === "GET" && url.pathname === "/decide") {
+      try { return await handleDecide(url, env); }
+      catch (e) { return decidePage("Something went wrong recording that action: " + e.message, false); }
+    }
+    // --- admin surface (key-gated staff) ---
+    if (req.method === "GET" && url.pathname === "/admin") {
+      return new Response(keyOk(env, url.searchParams.get("k")) ? ADMIN_HTML : LOCKED_HTML,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (req.method === "GET" && url.pathname === "/reports") {
+      return new Response(keyOk(env, url.searchParams.get("k")) ? REPORTS_HTML : LOCKED_HTML,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    if (req.method === "GET" && url.pathname === "/api/admin/candidates") {
+      if (!keyOk(env, url.searchParams.get("k"))) return json({ ok: false }, 403);
+      try { return await handleAdminList(env); }
+      catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+    }
+    if (req.method === "POST" && url.pathname === "/api/admin/action") {
+      let body;
+      try { body = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
+      if (!keyOk(env, body.k)) return json({ ok: false }, 403);
+      try { return await handleAdminAction(body, env); }
+      catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
     }
     if (req.method === "POST" && (url.pathname === "/api/apply" || url.pathname === "/api/verify")) {
       let body;

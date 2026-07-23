@@ -35,15 +35,44 @@ export async function findCandidateByResultId(env, resultId) {
 }
 
 export async function listPendingTests(env) {
-  const formula = encodeURIComponent('{Screening Verdict}="Pending Test"');
+  return listByFormula(env, '{Screening Verdict}="Pending Test"');
+}
+
+export async function findCandidateById(env, id) {
+  if (!/^rec[A-Za-z0-9]{14}$/.test(String(id || ""))) return null;
+  try {
+    const data = await at(env, CANDIDATES.tableId + "/" + id + "?returnFieldsByFieldId=true");
+    return data && data.id ? data : null;
+  } catch { return null; }
+}
+
+export async function findCandidateByToken(env, token) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(token || ""))) return null;
+  const esc = String(token).replace(/"/g, '\\"');
+  const data = await at(env, CANDIDATES.tableId + "?filterByFormula=" + encodeURIComponent('{Action Token}="' + esc + '"') + "&maxRecords=1&returnFieldsByFieldId=true");
+  return data.records[0] || null;
+}
+
+/** All candidates, most-recent first (dashboard reads then groups client-side). */
+export async function listAllCandidates(env) {
+  return listByFormula(env, "");
+}
+
+async function listByFormula(env, formula) {
   const out = [];
   let offset = "";
+  const f = formula ? "filterByFormula=" + encodeURIComponent(formula) + "&" : "";
   do {
-    const data = await at(env, CANDIDATES.tableId + "?filterByFormula=" + formula + "&pageSize=100&returnFieldsByFieldId=true" + (offset ? "&offset=" + offset : ""));
+    const data = await at(env, CANDIDATES.tableId + "?" + f + "pageSize=100&returnFieldsByFieldId=true" + (offset ? "&offset=" + offset : ""));
     out.push(...data.records);
     offset = data.offset || "";
   } while (offset);
   return out;
+}
+
+/** Candidates in a given Stage — used by the daily endorsement-nudge sweep. */
+export async function listByStage(env, stage) {
+  return listByFormula(env, '{Stage}="' + String(stage).replace(/"/g, '\\"') + '"');
 }
 
 export function auditLine(msg) {
