@@ -1,9 +1,11 @@
-// CIMS Recruitment — public submission form + digest/invite/reminder emails.
-// Standalone worker; deliberately shares NO code or data with cims-hr-console.
+// CIMS Recruitment — private submission form + digest/invite/reminder emails.
+// Standalone worker. READ-ONLY console access via the CONSOLE_DB binding
+// (fixed SELECTs in src/consoleData.js — this worker can never write there).
 
-import { PAGE_HTML } from "./page.js";
-import { RECIPIENTS, YANNA_EMAIL, FROM, FORM_URL, CONSOLE_URL, AIRTABLE, FLEETS } from "./config.js";
+import { PAGE_HTML, LOCKED_HTML } from "./page.js";
+import { RECIPIENTS, ADMINS, FROM, FORM_URL, CONSOLE_URL, AIRTABLE, FLEETS } from "./config.js";
 import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday } from "./lib.js";
+import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
 
 const AT_API = "https://api.airtable.com/v0";
@@ -45,6 +47,7 @@ function recordToCounts(rec) {
   const f = rec.fields, F = AIRTABLE.fields;
   return {
     month: f[F.month],
+    status: f[F.status] || "Submitted",
     counts: {
       inProcess: f[F.inProcess] ?? null, interviewed: f[F.interviewed] ?? null,
       approved: f[F.approved] ?? null, rejected: f[F.rejected] ?? null,
@@ -72,7 +75,7 @@ function cleanToFields(clean) {
     [F.srcWalkins]: clean.channels.walkins,
     [F.rejectionReasons]: clean.rejectionReasons,
     [F.readyNames]: p.ready.map(r => `${r.name} (${r.fleet})${r.date ? " — " + r.date : ""}`).join("\n"),
-    [F.joinedNames]: p.joined.map(r => `${r.name} (${r.fleet})`).join("\n"),
+    [F.joinedNames]: p.joined.map(r => `${r.name} (${r.fleet})${r.date ? " — " + r.date : ""}`).join("\n"),
     [F.notReturning]: p.flags.map(r => `${r.name} (${r.fleet})${r.reason ? " — " + r.reason : ""}`).join("\n"),
     [F.complianceFlags]: [
       ...clean.compliance.map(r => `${r.name} — ${r.doc}${r.expires ? " — " + r.expires : ""}`),
@@ -85,6 +88,7 @@ function cleanToFields(clean) {
     [F.decisionsNeeded]: clean.decisions,
     [F.observations]: clean.observations,
     [F.rawJson]: JSON.stringify(clean, null, 2),
+    [F.status]: "Submitted",
   };
 }
 
@@ -93,9 +97,13 @@ function cleanToFields(clean) {
 // ---------------------------------------------------------------------------
 const isPlaceholder = a => /@example\.com$/i.test(a);
 
-function emailConfigured(env) {
+function digestConfigured(env) {
   if (!env.RESEND_API_KEY) return false;
   return ![...RECIPIENTS.to, ...RECIPIENTS.cc].some(isPlaceholder);
+}
+
+function adminEmails() {
+  return [ADMINS.recruitmentAdmin, ADMINS.crewAdmin].filter(a => a && !isPlaceholder(a));
 }
 
 async function sendEmail(env, { to, cc, subject, html }) {
@@ -108,21 +116,61 @@ async function sendEmail(env, { to, cc, subject, html }) {
   return res.json();
 }
 
+function keyedFormUrl(env) {
+  return FORM_URL + (env.FORM_KEY ? "/?k=" + env.FORM_KEY : "");
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handlers
 // ---------------------------------------------------------------------------
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
-async function handleSubmit(req, env) {
-  let payload;
-  try { payload = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
+function keyOk(env, provided) {
+  return !!env.FORM_KEY && provided === env.FORM_KEY;
+}
 
-  const { ok, errors, clean } = validateSubmission(payload, FLEETS);
+async function handleContext(url, env) {
+  const month = url.searchParams.get("month") || "";
+  const prefill = await consoleContext(env, month);
+
+  let record = null;
+  try {
+    const rec = await findMonthRecord(env, month);
+    if (rec) {
+      let payload = null;
+      try { payload = JSON.parse(rec.fields[AIRTABLE.fields.rawJson] || "null"); } catch {}
+      record = { status: rec.fields[AIRTABLE.fields.status] || "Submitted", payload };
+    }
+  } catch (e) {
+    console.log("context airtable: " + e.message);
+  }
+  return json({ ok: true, prefill, record });
+}
+
+async function handleDraft(body, env) {
+  const payload = body.payload || {};
+  const month = String(payload.month || "").trim();
+  if (!month) return json({ ok: false, errors: ["No month in draft."] }, 400);
+
+  const F = AIRTABLE.fields;
+  const existing = await findMonthRecord(env, month);
+  const status = existing && existing.fields[F.status] === "Submitted" ? "Submitted" : "Draft";
+  const fields = { [F.month]: month, [F.status]: status, [F.rawJson]: JSON.stringify(payload, null, 2) };
+  if (existing) {
+    await atFetch(env, `${AIRTABLE.tableId}/${existing.id}`, { method: "PATCH", body: JSON.stringify({ fields }) });
+  } else {
+    await atFetch(env, AIRTABLE.tableId, { method: "POST", body: JSON.stringify({ records: [{ fields }] }) });
+  }
+  return json({ ok: true });
+}
+
+async function handleSubmit(body, env) {
+  const { ok, errors, warnings, clean } = validateSubmission(body.payload, FLEETS);
   if (!ok) return json({ ok: false, errors }, 400);
 
-  // One row per month: update if the month already exists (-> REVISED email).
   const existing = await findMonthRecord(env, clean.month);
+  const revised = !!(existing && existing.fields[AIRTABLE.fields.status] === "Submitted");
   const fields = cleanToFields(clean);
   if (existing) {
     await atFetch(env, `${AIRTABLE.tableId}/${existing.id}`, { method: "PATCH", body: JSON.stringify({ fields }) });
@@ -130,44 +178,48 @@ async function handleSubmit(req, env) {
     await atFetch(env, AIRTABLE.tableId, { method: "POST", body: JSON.stringify({ records: [{ fields }] }) });
   }
 
-  // Build the digest from history.
   const all = await listAllMonths(env);
-  const prevRows = all.map(recordToCounts).filter(r => r.month && r.month !== clean.month);
+  const prevRows = all.map(recordToCounts).filter(r => r.month && r.month !== clean.month && r.status === "Submitted");
   const digest = computeDigest(clean, prevRows);
 
   let emailSkipped = true;
-  if (emailConfigured(env)) {
+  if (digestConfigured(env)) {
     const c = clean.counts;
-    const subject = `CIMS Recruitment Update — ${clean.month}${existing ? " (REVISED)" : ""} · Pipeline ${c.inProcess} · Approved ${c.approved} · Ready ${c.ready}`;
-    const html = renderDigest(clean, digest, { revised: !!existing, consoleUrl: CONSOLE_URL });
+    const subject = `CIMS Recruitment Update — ${clean.month}${revised ? " (REVISED)" : ""} · Pipeline ${c.inProcess} · Approved ${c.approved} · Ready ${c.ready}`;
+    const html = renderDigest(clean, digest, { revised, consoleUrl: CONSOLE_URL, warnings });
     await sendEmail(env, { to: RECIPIENTS.to, cc: RECIPIENTS.cc, subject, html });
     emailSkipped = false;
   }
 
-  return json({ ok: true, revised: !!existing, emailSkipped });
+  return json({ ok: true, revised, emailSkipped, warnings });
 }
 
 // ---------------------------------------------------------------------------
-// Cron: invitation (first Monday) + reminder (Thursday after, if unsubmitted)
+// Cron: invitation (first Monday) + reminder (Thursday after, if not submitted)
 // ---------------------------------------------------------------------------
 async function handleScheduled(env) {
   const mnl = manilaNow();
   const month = prevMonthName(mnl);
-  if (!env.RESEND_API_KEY || isPlaceholder(YANNA_EMAIL)) return;
+  const admins = adminEmails();
+  if (!env.RESEND_API_KEY || !admins.length) return;
 
   if (isFirstMonday(mnl)) {
     await sendEmail(env, {
-      to: [YANNA_EMAIL],
-      subject: `${month.split(" ")[0]} closed — your Recruitment Update is ready to submit`,
-      html: renderInvite(month, FORM_URL),
+      to: admins,
+      subject: `${month.split(" ")[0]} closed — the Recruitment Update form is open`,
+      html: renderInvite(month, keyedFormUrl(env)),
     });
   } else if (isReminderThursday(mnl)) {
-    const existing = await findMonthRecord(env, month);
-    if (!existing) {
+    let submitted = false;
+    try {
+      const rec = await findMonthRecord(env, month);
+      submitted = !!(rec && rec.fields[AIRTABLE.fields.status] === "Submitted");
+    } catch {}
+    if (!submitted) {
       await sendEmail(env, {
-        to: [YANNA_EMAIL],
+        to: admins,
         subject: `Reminder — ${month} Recruitment Update not yet submitted`,
-        html: renderReminder(month, FORM_URL),
+        html: renderReminder(month, keyedFormUrl(env)),
       });
     }
   }
@@ -177,15 +229,33 @@ async function handleScheduled(env) {
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      return new Response(PAGE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      return new Response(keyOk(env, url.searchParams.get("k")) ? PAGE_HTML : LOCKED_HTML,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json({ ok: true, emailConfigured: emailConfigured(env), hasAirtableToken: !!env.AIRTABLE_TOKEN });
+      return json({
+        ok: true,
+        digestConfigured: digestConfigured(env),
+        adminInvitesConfigured: adminEmails().length === 2,
+        hasAirtableToken: !!env.AIRTABLE_TOKEN,
+        hasFormKey: !!env.FORM_KEY,
+        hasConsoleBinding: !!env.CONSOLE_DB,
+      });
     }
-    if (req.method === "POST" && url.pathname === "/api/submit") {
-      try { return await handleSubmit(req, env); }
+    if (req.method === "GET" && url.pathname === "/api/context") {
+      if (!keyOk(env, url.searchParams.get("k"))) return json({ ok: false }, 403);
+      try { return await handleContext(url, env); }
       catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+    }
+    if (req.method === "POST" && (url.pathname === "/api/draft" || url.pathname === "/api/submit")) {
+      let body;
+      try { body = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
+      if (!keyOk(env, body.k)) return json({ ok: false }, 403);
+      try {
+        return url.pathname === "/api/draft" ? await handleDraft(body, env) : await handleSubmit(body, env);
+      } catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
     }
     return new Response("Not found", { status: 404 });
   },
