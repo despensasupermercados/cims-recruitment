@@ -279,7 +279,7 @@ async function sendInvite(env, name, email) {
   if (!env.RESEND_API_KEY) return;
   await sendEmail(env, {
     to: [email],
-    replyTo: FUNNEL.notify[0],
+    replyTo: FUNNEL.replyTo,
     subject: "Your DG3 CIMS application — one step left: the assessment",
     html: renderTestInvite(name, FUNNEL.testUrl, FORM_URL + "/verify"),
   });
@@ -343,9 +343,9 @@ async function handleVerify(body, env) {
 
   if (env.RESEND_API_KEY) {
     if (gate === "reject") {
-      await sendEmail(env, { to: [email], replyTo: FUNNEL.notify[0], subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
     } else {
-      await sendEmail(env, { to: [email], replyTo: FUNNEL.notify[0], subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
       const notify = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
       if (notify.length) {
         await sendEmail(env, {
@@ -380,7 +380,7 @@ async function funnelDaily(env) {
       }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
     } else if (days >= 7 && !audit.includes("7-day reminder sent") && env.RESEND_API_KEY && email) {
       await sendEmail(env, {
-        to: [email], replyTo: FUNNEL.notify[0],
+        to: [email], replyTo: FUNNEL.replyTo,
         subject: "Reminder — your DG3 CIMS assessment is waiting",
         html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
       });

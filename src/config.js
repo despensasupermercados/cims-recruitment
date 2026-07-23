@@ -86,6 +86,7 @@ export const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
 // Funnel notifications go to the two interviewers directly (per Miguel, 2026-07-23).
 export const FUNNEL = {
   notify: ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"],
+  replyTo: "recruitment@tdgcm.ph", // applicant replies land in the monitored TDG recruitment inbox
   testUrl: "https://bigfive-test.com/test",
   resultUrl: "https://bigfive-test.com/result/", // + result ID (server-side fetch)
   cooldownDays: 365, // rejected applicants may re-apply after 12 months (SOP v1.1 §10)
