@@ -10,7 +10,7 @@ import { renderDigest, renderInvite, renderReminder } from "./emails.js";
 import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS } from "./funnelLib.js";
 import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, cf } from "./candidates.js";
-import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify } from "./funnelEmails.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert } from "./funnelEmails.js";
 import { CANDIDATES } from "./config.js";
 
 const AT_API = "https://api.airtable.com/v0";
@@ -314,9 +314,7 @@ async function handleVerify(body, env) {
       if (who.length) await sendEmail(env, {
         to: who,
         subject: "Manual review needed — assessment result could not be read",
-        html: "<p>Candidate <b>" + (cf(rec, "name") || email) + "</b> (" + email + ") submitted result ID <code>" + resultId +
-          "</code> but the scores could not be parsed automatically (the test provider may have changed its page format).</p>" +
-          "<p>Please open <a href=\"https://bigfive-test.com/result/" + resultId + "\">the result</a>, read the five scores manually, and record the outcome on the candidate record.</p>",
+        html: renderParseFailAlert(cf(rec, "name") || email, email, resultId),
       });
     }
     return json({ ok: false, errors: ["We could not read that result automatically. The recruitment team has been notified and will review it manually."] }, 500);

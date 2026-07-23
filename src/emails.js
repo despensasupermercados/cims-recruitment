@@ -1,12 +1,12 @@
 // Email HTML renderers — inline styles only (email clients ignore <style> blocks).
 import { FLEETS } from "./config.js";
 
-const NAVY = "#1B3A5C", GREEN = "#5FB946", GREEN_L = "#6CC24A", SLATE = "#6B7280",
+export const NAVY = "#1B3A5C", GREEN = "#5FB946", GREEN_L = "#6CC24A", SLATE = "#6B7280",
   LIGHT = "#9CA3AF", CLOUD = "#F3F4F6", BORDER = "#E5E7EB", DOWN = "#F87171";
 
-const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function shell(inner, footerNote) {
+export function shell(inner, footerNote, contextLabel = "Monthly Recruitment Update") {
   return `<!DOCTYPE html><html><body style="margin:0;padding:24px 12px;background:#EEF1F4;">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid ${BORDER};border-radius:10px;overflow:hidden;font-family:Segoe UI,system-ui,Arial,sans-serif;">
     <div style="height:4px;background:linear-gradient(90deg,${NAVY} 60%,${GREEN} 60%);font-size:0;">&nbsp;</div>
@@ -16,7 +16,7 @@ function shell(inner, footerNote) {
         <span style="color:${GREEN};font-weight:700;">&nbsp;|&nbsp;</span>
         <span style="font-size:11px;font-weight:600;color:${GREEN};letter-spacing:1.5px;">DG3</span>
       </td>
-      <td align="right" style="padding:16px 24px;font-size:8px;font-weight:500;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase;">Monthly Recruitment Update</td>
+      <td align="right" style="padding:16px 24px;font-size:8px;font-weight:500;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase;">${contextLabel}</td>
     </tr></table>
     ${inner}
     <div style="border-top:1px solid ${BORDER};padding:12px 24px;font-size:9px;color:${LIGHT};line-height:1.6;">${footerNote}</div>
@@ -118,7 +118,7 @@ export function renderDigest(clean, digest, { revised, consoleUrl, warnings }) {
 
     ${warnings && warnings.length ? `<div style="border-left:3px solid #fab219;background:#FDF8EC;border-radius:0 8px 8px 0;padding:10px 14px;margin-top:16px;font-size:12px;color:${NAVY};">${warnings.map(esc).join("<br>")}</div>` : ""}
 
-    <div style="margin-top:20px;"><a href="${consoleUrl}" style="display:inline-block;background:${NAVY};color:#fff;text-decoration:none;font-size:12px;font-weight:600;letter-spacing:.5px;padding:11px 20px;border-radius:6px;">View full history <span style="color:${GREEN};">&rarr;</span> CIMS Console</a></div>
+    <div style="margin-top:20px;"><a href="${consoleUrl}" style="display:inline-block;background:${NAVY};color:#fff;text-decoration:none;font-size:12px;font-weight:600;letter-spacing:.5px;padding:11px 20px;border-radius:8px;">View full history in the CIMS Console</a></div>
   </div>`;
 
   return shell(inner, `Sent automatically on ${esc(clean.submittedBy)}'s form submission · A resubmission for the same month is marked REVISED · CIMS — A division of DG3 · Confidential`);
@@ -134,7 +134,7 @@ export function renderInvite(monthName, formUrl) {
       <span style="color:${GREEN};font-weight:700;">Part 2</span>&nbsp; <b style="color:${NAVY};">Crew Admin</b> — pre-filled from the CIMS Console; review, adjust, add<br>
       <span style="color:${GREEN};font-weight:700;">Submit</span>&nbsp; sends the compiled update to Miguel, Rita &amp; the team instantly
     </div>
-    <div style="margin-top:18px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form &rarr;</a></div>
+    <div style="margin-top:18px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form</a></div>
     <p style="font-size:11px;color:${LIGHT};margin:12px 0 0;line-height:1.6;">Please submit within 3 days. Made a mistake after submitting? Submit the same month again — the new email goes out marked REVISED.</p>
   </div>`;
   return shell(inner, "Sent automatically on the first Monday of each month to the Recruitment Admin and Crew Admin · CIMS — A division of DG3");
@@ -148,7 +148,7 @@ export function renderReminder(monthName, formUrl) {
       <p style="font-size:13px;color:${NAVY};margin:0;">The <b>${esc(monthName)}</b> update hasn't been submitted yet. The team is waiting on this month's numbers.</p>
     </div>
     <p style="font-size:13px;color:#374151;line-height:1.65;margin:12px 0 0;">Anything already typed is saved as a draft — pick up where you left off and hit Submit. The email to Miguel, Rita &amp; the team goes out the moment it's in.</p>
-    <div style="margin-top:16px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form &rarr;</a></div>
+    <div style="margin-top:16px;"><a href="${formUrl}" style="display:inline-block;background:${GREEN};color:#fff;text-decoration:none;font-size:13px;font-weight:700;letter-spacing:.5px;padding:12px 24px;border-radius:8px;">Open the ${esc(monthName.split(" ")[0])} form</a></div>
     <p style="font-size:11px;color:${LIGHT};margin:12px 0 0;line-height:1.6;">This is the only reminder — no further follow-ups are sent.</p>
   </div>`;
   return shell(inner, "Sent once, 3 days after the invitation if no submission received · CIMS — A division of DG3");
