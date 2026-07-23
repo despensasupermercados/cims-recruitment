@@ -1,41 +1,49 @@
 // ============================================================================
 // CIMS Recruitment — configuration
-// This is the ONLY file Miguel ever needs to edit (on GitHub: open the file,
-// click the pencil icon, change a value, commit — the worker redeploys itself).
+// The ONLY file that ever needs a human edit (GitHub pencil icon -> commit;
+// the worker redeploys itself).
 // ============================================================================
 
-// --- Email recipients -------------------------------------------------------
-// Replace the placeholders with real addresses. Until every "@example.com"
-// placeholder is gone, the worker SAVES submissions but SKIPS sending email
-// (so nothing embarrassing goes out half-configured).
+// --- Digest recipients ------------------------------------------------------
+// Until every "@example.com" placeholder is gone, submissions are SAVED but
+// no email is sent.
 export const RECIPIENTS = {
   to: [
     "miguel@example.com",     // Miguel San Martin
     "rita@example.com",       // Rita
   ],
   cc: [
-    "yanna@example.com",      // Yanna (TDG Recruitment) — also gets invite & reminder
-    "joyce@example.com",      // Joyce
-    "joy@example.com",        // Joy
-    "ray@example.com",        // Ray
-    "rolando@example.com",    // Rolando
-    "joemar@example.com",     // Joemar
-    "ohjie@example.com",      // Ohjie
+    "recruitment.admin@example.com", // Recruitment Admin
+    "crew.admin@example.com",        // Crew Admin
+    "joyce@example.com",             // Manager
+    "ray@example.com",
+    "rolando@example.com",
+    "joemar@example.com",
+    "ohjie@example.com",
   ],
 };
 
-// The invitation + reminder go only to Yanna.
-export const YANNA_EMAIL = "yanna@example.com";
+// The invitation + reminder go to the two form owners (by role, not name).
+export const ADMINS = {
+  recruitmentAdmin: "recruitment.admin@example.com", // Part 1 — recruitment funnel
+  crewAdmin: "crew.admin@example.com",               // Part 2 — existing crew
+};
 
-// Sender. The domain must be verified in Resend (same as the CIMS HR console uses).
+// Sender. Domain must be verified in Resend.
 export const FROM = "CIMS Recruitment <recruitment@cims.work>";
 
-// Where the form lives (used inside the invite/reminder emails).
+// Where the form lives. The invite links append ?k=<FORM_KEY> automatically.
 export const FORM_URL = "https://recruitment.cims.work";
 
-// Link shown at the bottom of the digest email. Point it at the CIMS console
-// Reports tab once that page exists; any URL works.
+// Link at the bottom of the digest email.
 export const CONSOLE_URL = "https://cims.work";
+
+// --- Prefill windows --------------------------------------------------------
+export const PREFILL = {
+  docWindowDays: 120,     // compliance: documents expiring within this window
+  renewalWindowDays: 90,  // visa & medical: renewals due within this window (or overdue)
+  signoffWindowDays: 60,  // forecast context: projected sign-offs within this window
+};
 
 // --- Airtable (do not change unless the base is rebuilt) --------------------
 export const AIRTABLE = {
@@ -66,8 +74,9 @@ export const AIRTABLE = {
     srcReferrals:     "fldeSGIVrxuXApUji",
     srcWalkins:       "fld67iO4dr3u6b57z",
     rawJson:          "fldBG7FQXlwebd6Fa",
+    status:           "fldt9LSVgqXqoXkxO", // Draft | Submitted
   },
 };
 
-// Fleets shown on the form and in the digest, in display order.
+// Fleets in display order.
 export const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
