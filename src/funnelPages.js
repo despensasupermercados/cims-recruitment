@@ -67,7 +67,9 @@ button.cta:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
 @keyframes pop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
 .okpane .big{font-family:Outfit;font-size:22px;font-weight:800;color:var(--navy);margin:0 0 10px}
 .okpane p{font-size:14px;color:#43566d;line-height:1.6;max-width:420px;margin:0 auto}
-.callout{background:#F2FAEE;border-left:3px solid var(--green);border-radius:0 12px 12px 0;padding:13px 16px;font-size:13.5px;line-height:1.6;margin:0 0 6px;color:#33591f}
+.callout{background:#F2FAEE;border-left:3px solid var(--green);border-radius:0 12px 12px 0;padding:13px 16px;font-size:13.5px;line-height:1.6;margin:0 0 12px;color:#33591f}
+.cta2{display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid var(--green);background:#fff;color:#3E8A28;font-weight:700;font-size:15px;padding:13px;border-radius:12px;text-decoration:none;transition:all .15s;margin-bottom:6px}
+.cta2:hover{background:#F2FAEE;transform:translateY(-1px)}
 .hp{position:absolute;left:-5000px;top:-5000px}
 .foot{text-align:center;color:var(--mut);font-size:11px;margin-top:22px;letter-spacing:.5px}
 .hint{font-size:12px;color:var(--mut);margin-top:6px}
@@ -199,7 +201,8 @@ export const VERIFY_HTML = HEAD + TOPBAR + `
   <div class="step"><b>3</b>Interview</div>
  </div>
  <div class="card" id="formCard">
-  <div class="callout"><b>1.</b> Take the test at bigfive-test.com &nbsp;&#8594;&nbsp; <b>2.</b> copy the Result ID at the end &nbsp;&#8594;&nbsp; <b>3.</b> submit it below with your email.</div>
+  <div class="callout"><b>1.</b> Take the test (button below) &nbsp;&#8594;&nbsp; <b>2.</b> copy the Result ID at the end &nbsp;&#8594;&nbsp; <b>3.</b> come back and submit it with your email.</div>
+  <a class="cta2" href="https://bigfive-test.com/test" target="_blank" rel="noopener">Open the Big Five test &#8599;</a>
   <form id="f">
    <label>Your email address <span class="opt">(the one you applied with)</span></label>
    <input type="email" id="email" placeholder="you@example.com" maxlength="120">
