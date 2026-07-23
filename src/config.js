@@ -41,9 +41,9 @@ export const CONSOLE_URL = "https://cims.work";
 
 // --- Prefill windows --------------------------------------------------------
 export const PREFILL = {
-  docWindowDays: 120,     // compliance: documents expiring within this window
-  renewalWindowDays: 90,  // visa & medical: renewals due within this window (or overdue)
-  signoffWindowDays: 60,  // forecast context: projected sign-offs within this window
+  docWindowDays: 30,      // compliance: documents expired/expiring within 30 days of the report
+  signoffWindowDays: 60,  // forecast headline: projected sign-offs within this window
+  signoffListDays: 90,    // forecast chips: projected sign-offs listed from the console
 };
 
 // --- Airtable (do not change unless the base is rebuilt) --------------------

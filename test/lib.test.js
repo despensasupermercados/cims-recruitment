@@ -86,12 +86,11 @@ test("ready-count mismatch is a warning, not an error", () => {
   assert.ok(warnings.some(w => w.includes("ready to deploy")));
 });
 
-test("channel mismatch is rejected", () => {
+test("channel mismatch is allowed (gate removed)", () => {
   const p = goodPayload();
   p.channels.tcms = 30;
-  const { ok, errors } = validateSubmission(p, FLEETS);
-  assert.ok(!ok);
-  assert.ok(errors.some(e => e.includes("don't add up to In process")));
+  const { ok } = validateSubmission(p, FLEETS);
+  assert.ok(ok);
 });
 
 test("candidate-stage fleet mismatch is rejected", () => {

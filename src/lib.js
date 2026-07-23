@@ -145,8 +145,7 @@ export function validateSubmission(payload, fleets) {
   const tcms = toInt(ch.tcms), ref = toInt(ch.referrals), walk = toInt(ch.walkins);
   if ([tcms, ref, walk].some(Number.isNaN)) errors.push("Sourcing channels must be whole numbers.");
   else if ([tcms, ref, walk].some(v => v === null)) errors.push("All three sourcing channels are required (0 is allowed).");
-  else if (counts.inProcess !== undefined && tcms + ref + walk !== counts.inProcess)
-    errors.push("Sourcing channels (" + (tcms + ref + walk) + ") don't add up to In process (" + counts.inProcess + ").");
+  // Note: channels are NOT required to add up to In process (gate removed per Miguel).
 
   const fleet = p.fleet || {};
   for (const [rowKey, countKey, label] of MANUAL_MATRIX_ROWS) {
