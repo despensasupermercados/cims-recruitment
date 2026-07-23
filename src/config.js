@@ -5,16 +5,15 @@
 // ============================================================================
 
 // --- Digest recipients ------------------------------------------------------
-// Until every "@example.com" placeholder is gone, submissions are SAVED but
-// no email is sent. Two placeholders remain: Miguel's and the Recruitment
-// Admin's (Yanna's) addresses.
+// All addresses are real: every submission emails the team. To disarm for
+// testing, change any address to something@example.com and commit.
 export const RECIPIENTS = {
   to: [
-    "miguel@example.com",                 // Miguel San Martin — PENDING
+    "Miguel.Sanmartin@dg3.com",           // Miguel San Martin
     "Rita.Berenyi@dg3.com",               // Rita Berenyi
   ],
   cc: [
-    "recruitment.admin@example.com",      // Yanna — Recruitment Admin — PENDING
+    "recruitment@tdgcm.ph",               // TDGCM Recruitment — Recruitment Admin
     "maryjoy.manzanares@dg3.com",         // Maryjoy Manzanares — Crew Admin
     "Joyce.Castillo@tdgcm.ph",            // Joyce Castillo — Manager
     "Ray.Guerra@dg3.com",                 // Ray Guerra
@@ -27,8 +26,8 @@ export const RECIPIENTS = {
 
 // The invitation + reminder go to the two form owners (by role, not name).
 export const ADMINS = {
-  recruitmentAdmin: "recruitment.admin@example.com", // Yanna — PENDING
-  crewAdmin: "maryjoy.manzanares@dg3.com",           // Maryjoy Manzanares
+  recruitmentAdmin: "recruitment@tdgcm.ph",  // TDGCM Recruitment — Part 1
+  crewAdmin: "maryjoy.manzanares@dg3.com",   // Maryjoy Manzanares — Part 2
 };
 
 // Sender. Domain must be verified in Resend.
