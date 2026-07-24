@@ -96,7 +96,7 @@ var BUCKETS=[
  ['action','Needs action',['Tested — Passed','Interview Assigned','Interviewed — Recommend','Endorsed — Awaiting Approval','Exception Requested']],
  ['scheduled','Scheduled',['Final Scheduled']],
  ['approved','Approved',['Approved']],
- ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Tested — Rejected','Auto-Rejected','Expired — No Test']],
+ ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Final — Not hired','Tested — Rejected','Auto-Rejected','Expired — No Test']],
  ['testing','In testing',['Applied','Pending Test']],
 ];
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -137,8 +137,9 @@ function meta(c){
   'Interview Assigned':[2,'act',0,'In first interview with '+iv+' — record the outcome'],
   'Interviewed — Recommend':[3,'act',0,'Recommended — endorse to Ray & Rolando'],
   'Endorsed — Awaiting Approval':[4,'wait',0,'Endorsed — awaiting Ray or Rolando to approve'],
-  'Final Scheduled':[4,'good',0,'Final interview scheduled'+(df?' — '+df:'')],
-  'Approved':[6,'good',0,'Approved — in visa & medicals'],
+  'Final Scheduled':[4,'act',0,'Final interview scheduled'+(df?' — '+df:'')+' — record the outcome after it happens'],
+  'Approved':[6,'good',0,'Hired — approved, in visa & medicals'],
+  'Final — Not hired':[5,'closed',1,'Closed — not hired at the final interview'],
   'Interviewed — Not advancing':[3,'closed',1,'Closed — not advancing after interview'],
   'Rejected — Manual':[2,'closed',1,'Closed — rejected'+(rr?' ('+rr+')':'')],
   'Endorsement Declined':[4,'closed',1,'Closed — declined by management'],
@@ -200,6 +201,8 @@ function actions(c){
  }
  if(s==='Interview Assigned'){a+='<button class="bg" onclick="pOutcome(\\''+c.id+'\\')">Record outcome</button>';}
  if(s==='Interviewed — Recommend'){a+='<button class="bg" onclick="pEndorse(\\''+c.id+'\\')">Endorse to Ray &amp; Rolando</button>';}
+ if(s==='Final Scheduled'){a+='<button class="bg" onclick="pFinal(\\''+c.id+'\\')">Record final outcome</button>';}
+ if(s==='Exception Requested'){a+='<button class="bn" onclick="pExc(\\''+c.id+'\\')">Record GM decision</button>';}
  if(s==='Tested — Passed'||s==='Interview Assigned'||s==='Interviewed — Recommend'){a+='<button class="br" onclick="pReject(\\''+c.id+'\\')">Reject</button>';}
  if(c.verdict==='Auto-Rejected'&&s!=='Exception Requested'){a+='<button class="bo" onclick="pException(\\''+c.id+'\\')">Request GM exception</button>';}
  return a;
@@ -213,6 +216,9 @@ function pOutNo(id){panel(id,'<label>Reason for not advancing</label><select id=
 function pEndorse(id){panel(id,'<label>Recommendation for Ray &amp; Rolando</label><textarea id="e_'+id+'" placeholder="Why this candidate should advance to the final interview&#8230;"></textarea><div class="tiny">Sends the profile with Approve / Decline links to Ray and Rolando. Either one approving schedules the next available Monday.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'endorse\\',{recommendation:v(\\'e_'+id+'\\')},\\'Endorsed — Ray &amp; Rolando notified, awaiting their approval\\')">Send endorsement</button></div>');}
 function pReject(id){panel(id,'<label>Rejection reason</label><select id="r_'+id+'">'+opts(REJECT)+'</select><div class="acts"><button class="br" onclick="doAct(this,\\''+id+'\\',\\'reject\\',{reason:v(\\'r_'+id+'\\')},\\'Rejected — moved to Closed\\')">Confirm rejection</button></div>');}
 function pException(id){panel(id,'<label>Justification for GM exception</label><textarea id="x_'+id+'" placeholder="Documented reason to advance a candidate below the SOP threshold&#8230;"></textarea><div class="tiny">Emails the GM. The candidate is held until a written decision.</div><div class="acts"><button class="bn" onclick="doAct(this,\\''+id+'\\',\\'exception\\',{reason:v(\\'x_'+id+'\\')},\\'Exception request sent to the GM\\')">Request exception</button></div>');}
+function pFinal(id){panel(id,'<label>Final interview outcome</label><textarea id="n_'+id+'" placeholder="How did the final interview go? (optional)"></textarea><div class="tiny">Record the result of the live interview with Ray &amp; Rolando.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'finalOutcome\\',{result:\\'hired\\',notes:v(\\'n_'+id+'\\')},\\'Hired — approved, entering visa &amp; medicals\\')">Hired &#10003;</button><button class="br" onclick="pFinalNo(\\''+id+'\\')">Not hired</button></div>');}
+function pFinalNo(id){panel(id,'<label>Reason not hired</label><select id="r_'+id+'">'+opts(REJECT)+'</select><label>Notes</label><textarea id="n_'+id+'"></textarea><div class="acts"><button class="br" onclick="doAct(this,\\''+id+'\\',\\'finalOutcome\\',{result:\\'no\\',reason:v(\\'r_'+id+'\\'),notes:v(\\'n_'+id+'\\')},\\'Recorded — not hired, moved to Closed\\')">Confirm — not hired</button></div>');}
+function pExc(id){panel(id,'<div class="tiny">Record the GM\\'s written decision on this exception request.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'exceptionDecide\\',{result:\\'approve\\'},\\'GM approved — candidate rejoins the interview flow\\')">GM approved</button><button class="br" onclick="doAct(this,\\''+id+'\\',\\'exceptionDecide\\',{result:\\'reject\\'},\\'GM declined — moved to Closed\\')">GM declined</button></div>');}
 function v(id){return (document.getElementById(id)||{}).value||'';}
 function doAct(btn,id,action,params,msg){
  if(btn){btn.dataset.t=btn.innerHTML;btn.innerHTML='Saving&#8230;';btn.classList.add('wait');btn.disabled=true;}

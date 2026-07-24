@@ -51,6 +51,27 @@ test("exception only for gate-rejected candidates", () => {
   assert.ok(!planAdminAction("exception", { stage: STAGES.NOT_ADVANCING, verdict: "Auto-Rejected" }, { reason: "" }).ok); // needs justification
 });
 
+test("final outcome: hired -> Approved (dateApproved), no -> closed; only from FINAL", () => {
+  assert.ok(!planAdminAction("finalOutcome", { stage: STAGES.ENDORSED }, { result: "hired" }).ok); // wrong stage
+  const hired = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "hired", today: "2026-08-03" });
+  assert.ok(hired.ok);
+  assert.equal(hired.stage, STAGES.APPROVED);
+  assert.equal(hired.fields.dateApproved, "2026-08-03");
+  const no = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "no", reason: "Not selected" });
+  assert.equal(no.stage, STAGES.FINAL_NO);
+  assert.equal(no.fields.rejectionReason, "Not selected");
+  assert.equal(no.emails[0].kind, "fail");
+});
+
+test("exception decision: approve -> Passed, reject -> Rejected; only from EXCEPTION", () => {
+  assert.ok(!planAdminAction("exceptionDecide", { stage: STAGES.PASSED }, { result: "approve" }).ok);
+  const ap = planAdminAction("exceptionDecide", { stage: STAGES.EXCEPTION }, { result: "approve", by: "Miguel" });
+  assert.equal(ap.stage, STAGES.PASSED);
+  const rj = planAdminAction("exceptionDecide", { stage: STAGES.EXCEPTION }, { result: "reject" });
+  assert.equal(rj.stage, STAGES.REJECTED);
+  assert.equal(rj.emails[0].kind, "fail");
+});
+
 test("decision: approve schedules and clears token; decline notifies; stale token is inert", () => {
   const ap = planDecision("approve", { stage: STAGES.ENDORSED }, { by: "Ray", slotIso: "2026-07-27", slotText: "Mon 27 Jul — 08:00 Miami" });
   assert.ok(ap.ok);

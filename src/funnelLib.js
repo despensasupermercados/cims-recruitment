@@ -34,7 +34,7 @@ export function applyGates(s, t = THRESHOLDS) {
 /**
  * Extract {N,E,O,A,C} from the bigfive-test.com result page HTML.
  * The page embeds a flight payload with escaped JSON per domain:
- *   \"domain\":\"N\", ... \"score\":34
+ *   \\"domain\\":\\"N\\", ... \\"score\\":34
  * Deterministic — no AI in the scoring path. Returns null if any domain is missing.
  */
 export function parseBigFiveHtml(html) {
@@ -60,7 +60,9 @@ export function validResultId(id) {
   return /^[0-9a-f]{24}$/i.test(String(id || "").trim());
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// Conservative charset — no quotes/backslashes/formula metacharacters, so the value
+// is safe to embed in an Airtable filterByFormula string later.
+const EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 export const SOURCES = ["TCMS website", "Crew referral", "Walk-in"];
 
@@ -111,10 +113,17 @@ export function isFinalHoliday(iso) {
   const d = new Date(iso + "T00:00:00Z");
   const m = d.getUTCMonth() + 1, day = d.getUTCDate(), dow = d.getUTCDay();
   const nthMon = Math.ceil(day / 7);
-  const fixed = new Set(["01-01", "06-19", "07-04", "11-11", "12-25", // US fixed
-    "04-09", "05-01", "06-12", "08-21", "11-30", "12-30"]);          // PH regular
+  const US_FIXED = ["01-01", "06-19", "07-04", "11-11", "12-25"];
+  const fixed = new Set([...US_FIXED, "04-09", "05-01", "06-12", "08-21", "11-30", "12-30"]); // + PH regular
   const mmdd = String(m).padStart(2, "0") + "-" + String(day).padStart(2, "0");
   if (fixed.has(mmdd)) return true;
+  // Observed shift: a US fixed holiday on Sunday is observed the following Monday.
+  if (dow === 1) {
+    const y = new Date(iso + "T00:00:00Z");
+    y.setUTCDate(y.getUTCDate() - 1); // the Sunday before this Monday
+    const smmdd = String(y.getUTCMonth() + 1).padStart(2, "0") + "-" + String(y.getUTCDate()).padStart(2, "0");
+    if (US_FIXED.indexOf(smmdd) >= 0) return true;
+  }
   if (dow === 1) { // Monday-anchored: US MLK, Presidents, Memorial, Labor, Columbus; PH National Heroes
     if (m === 1 && nthMon === 3) return true;
     if (m === 2 && nthMon === 3) return true;

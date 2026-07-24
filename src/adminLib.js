@@ -10,6 +10,7 @@ export const STAGES = {
   ENDORSED: "Endorsed — Awaiting Approval",
   FINAL: "Final Scheduled",
   APPROVED: "Approved",
+  FINAL_NO: "Final — Not hired",
   DECLINED: "Endorsement Declined",
   EXCEPTION: "Exception Requested",
   REJECTED: "Rejected — Manual",
@@ -21,6 +22,8 @@ const ALLOWED = {
   outcome: [STAGES.ASSIGNED],
   endorse: [STAGES.RECOMMEND],
   reject: [STAGES.PASSED, STAGES.ASSIGNED, STAGES.RECOMMEND],
+  finalOutcome: [STAGES.FINAL],
+  exceptionDecide: [STAGES.EXCEPTION],
 };
 
 export function canAct(stage, action) {
@@ -85,6 +88,35 @@ export function planAdminAction(action, cur, params = {}) {
     return { ok: true, stage: STAGES.EXCEPTION, fields: {},
       audit: "GM exception requested by " + (P.by || "recruitment") + ": " + reason,
       emails: [{ kind: "exception", to: "gm", reason }] };
+  }
+
+  // Record the GM's written decision on a requested exception (SOP v1.1 §11).
+  if (action === "exceptionDecide") {
+    if (!canAct(stage, "exceptionDecide")) return { ok: false, error: "No exception is pending on this candidate." };
+    if (P.result === "approve") {
+      return { ok: true, stage: STAGES.PASSED, fields: {},
+        audit: "GM exception APPROVED by " + (P.by || "recruitment") + " — candidate rejoins the interview flow.", emails: [] };
+    }
+    if (P.result === "reject") {
+      return { ok: true, stage: STAGES.REJECTED, fields: { rejectionReason: "GM declined exception" },
+        audit: "GM exception DECLINED by " + (P.by || "recruitment") + ".", emails: [{ kind: "fail", to: "applicant" }] };
+    }
+    return { ok: false, error: "Exception decision must be approve or reject." };
+  }
+
+  // Record the outcome of the final interview with Ray & Rolando.
+  if (action === "finalOutcome") {
+    if (!canAct(stage, "finalOutcome")) return { ok: false, error: "Only a candidate whose final interview is scheduled can have a final outcome recorded." };
+    const notes = String(P.notes || "").trim();
+    if (P.result === "hired") {
+      return { ok: true, stage: STAGES.APPROVED, fields: { dateApproved: P.today, interviewNotes: notes },
+        audit: "Final interview: HIRED. Approved — entering visa & medicals." + (notes ? " Notes recorded." : ""), emails: [] };
+    }
+    if (P.result === "no") {
+      return { ok: true, stage: STAGES.FINAL_NO, fields: { interviewNotes: notes, rejectionReason: P.reason || "Final interview — not selected" },
+        audit: "Final interview: NOT HIRED." + (notes ? " Notes recorded." : ""), emails: [{ kind: "fail", to: "applicant" }] };
+    }
+    return { ok: false, error: "Final outcome must be hired or no." };
   }
 
   return { ok: false, error: "Unknown action." };

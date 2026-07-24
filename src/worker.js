@@ -222,17 +222,24 @@ async function handleApply(body, env) {
           "Re-application attempt during 12-month cooldown — declined automatically.");
         return json({ ok: false, errors: ["An application from this email was concluded recently. You are welcome to apply again 12 months after your previous assessment."] }, 400);
       }
-      // Cooldown over: reset the record for a fresh run.
+      // Cooldown over: reset the record for a fresh run — clear ALL stale funnel data
+      // so a passing re-applicant doesn't carry an old rejection reason or old scores.
       await updateCandidate(env, existing.id, {
         [CF.stage]: "Applied", [CF.verdict]: "Pending Test", [CF.resultId]: "",
         [CF.phone]: clean.phone, [CF.position]: clean.position, [CF.source]: clean.source,
         [CF.dateApplied]: new Date().toISOString().slice(0, 10),
+        [CF.rejectionReason]: null, [CF.fitScore]: null, [CF.thresholdVersion]: "", [CF.dateTested]: null,
+        [CF.b5N]: null, [CF.b5E]: null, [CF.b5O]: null, [CF.b5A]: null, [CF.b5C]: null,
       }, cf(existing, "audit"), "Re-application after cooldown — record reset to Pending Test.");
       await sendInvite(env, clean.name, clean.email);
       return json({ ok: true });
     }
     if (verdict === "Pending Test" || verdict === "Expired — No Test") {
-      await updateCandidate(env, existing.id, { [CF.verdict]: "Pending Test" }, cf(existing, "audit"), "Duplicate application — test invite re-sent.");
+      // Re-open with a fresh clock so the daily sweep doesn't immediately re-expire it.
+      await updateCandidate(env, existing.id, {
+        [CF.verdict]: "Pending Test", [CF.stage]: "Applied",
+        [CF.dateApplied]: new Date().toISOString().slice(0, 10),
+      }, cf(existing, "audit"), "Duplicate application — test invite re-sent, clock reset.");
       await sendInvite(env, cf(existing, "name") || clean.name, clean.email);
       return json({ ok: true });
     }
@@ -273,6 +280,7 @@ async function handleFile(pathname, env) {
       "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
       "Content-Disposition": "inline",
       "Cache-Control": "private, max-age=300",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
@@ -415,10 +423,12 @@ async function sendPlanEmails(env, emails, c, extra = {}) {
       await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS application — outcome", html: renderFail(c.name) });
     } else if (e.kind === "endorsement") {
       // One email per approver, each carrying their own name in the decide links.
+      // NOT cc'd to the team — the Approve/Decline token authorizes the gate and must
+      // reach only Ray & Rolando. The team is notified separately, without the links.
       for (const ap of FUNNEL.finalApprovers) {
         const base = FORM_URL + "/decide?t=" + encodeURIComponent(extra.token) + "&by=" + encodeURIComponent(ap.name);
         await sendEmail(env, {
-          to: [ap.email], cc: notifyTeam(),
+          to: [ap.email],
           subject: "Final-interview candidate — " + c.name + " (Fit " + c.fit + (c.priority ? ", PRIORITY" : "") + ")",
           html: renderEndorsement(c, base + "&a=approve", base + "&a=decline", extra.slotText),
         });
@@ -451,7 +461,7 @@ async function handleAdminAction(body, env) {
   const fieldMap = {
     interviewer: CF.interviewer, interviewNotes: CF.interviewNotes, dateInterviewed: CF.dateInterviewed,
     rejectionReason: CF.rejectionReason, recommendation: CF.recommendation,
-    actionToken: CF.actionToken, dateEndorsed: CF.dateEndorsed,
+    actionToken: CF.actionToken, dateEndorsed: CF.dateEndorsed, dateApproved: CF.dateApproved,
   };
   const fields = { [CF.stage]: plan.stage };
   for (const [k, v] of Object.entries(plan.fields || {})) if (fieldMap[k]) fields[fieldMap[k]] = v;
@@ -514,37 +524,43 @@ function decidePage(msg, ok) {
 async function funnelDaily(env) {
   const rows = await listPendingTests(env);
   for (const rec of rows) {
-    const applied = cf(rec, "dateApplied");
-    if (!applied) continue;
-    const days = (Date.now() - new Date(applied + "T00:00:00Z").getTime()) / 86400000;
-    const email = cf(rec, "email");
-    const name = cf(rec, "name") || email || "candidate";
-    const audit = cf(rec, "audit") || "";
-    if (days >= 30) {
-      await updateCandidate(env, rec.id, {
-        [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
-      }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
-    } else if (days >= 7 && !audit.includes("7-day reminder sent") && env.RESEND_API_KEY && email) {
-      await sendEmail(env, {
-        to: [email], replyTo: FUNNEL.replyTo,
-        subject: "Reminder — your DG3 CIMS assessment is waiting",
-        html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
-      });
-      await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
-    }
+    // One bad record must never starve the rest of the sweep (reminders AND expiries).
+    try {
+      const applied = cf(rec, "dateApplied");
+      if (!applied) continue;
+      const days = (Date.now() - new Date(applied + "T00:00:00Z").getTime()) / 86400000;
+      const email = cf(rec, "email");
+      const name = cf(rec, "name") || email || "candidate";
+      const audit = cf(rec, "audit") || "";
+      if (days >= 30) {
+        await updateCandidate(env, rec.id, {
+          [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
+        }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
+      } else if (days >= 7 && !audit.includes("7-day reminder sent") && env.RESEND_API_KEY && email) {
+        // Mark first, then send: a failed send retries tomorrow; a failed mark never double-sends.
+        await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
+        await sendEmail(env, {
+          to: [email], replyTo: FUNNEL.replyTo,
+          subject: "Reminder — your DG3 CIMS assessment is waiting",
+          html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
+        });
+      }
+    } catch (e) { console.log("funnelDaily pending " + rec.id + ": " + e.message); }
   }
   // Endorsement nudge: still awaiting Ray/Rolando after N days.
   const endorsed = await listByStage(env, "Endorsed — Awaiting Approval");
   for (const rec of endorsed) {
-    const when = cf(rec, "dateEndorsed");
-    const audit = cf(rec, "audit") || "";
-    if (!when || audit.includes("endorsement nudge sent")) continue;
-    const days = (Date.now() - new Date(when + "T00:00:00Z").getTime()) / 86400000;
-    if (days >= FUNNEL.endorseNudgeDays && env.RESEND_API_KEY) {
-      const who = notifyTeam();
-      if (who.length) await sendEmail(env, { to: who, subject: "Endorsement awaiting a response — " + (cf(rec, "name") || ""), html: renderEndorseNudge(candView(rec), Math.floor(days)) });
-      await updateCandidate(env, rec.id, {}, audit, "Endorsement nudge sent (" + Math.floor(days) + " days awaiting authorization).");
-    }
+    try {
+      const when = cf(rec, "dateEndorsed");
+      const audit = cf(rec, "audit") || "";
+      if (!when || audit.includes("endorsement nudge sent")) continue;
+      const days = (Date.now() - new Date(when + "T00:00:00Z").getTime()) / 86400000;
+      if (days >= FUNNEL.endorseNudgeDays && env.RESEND_API_KEY) {
+        await updateCandidate(env, rec.id, {}, audit, "Endorsement nudge sent (" + Math.floor(days) + " days awaiting authorization).");
+        const who = notifyTeam();
+        if (who.length) await sendEmail(env, { to: who, subject: "Endorsement awaiting a response — " + (cf(rec, "name") || ""), html: renderEndorseNudge(candView(rec), Math.floor(days)) });
+      }
+    } catch (e) { console.log("funnelDaily endorsed " + rec.id + ": " + e.message); }
   }
 }
 
@@ -612,7 +628,7 @@ export default {
     }
     if (req.method === "POST" && url.pathname === "/api/upload") {
       try { return await handleUpload(req, env); }
-      catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+      catch (e) { console.log("upload: " + e.message); return json({ ok: false, errors: ["Upload failed — please try again."] }, 500); }
     }
     if (req.method === "GET" && url.pathname.startsWith("/files/")) {
       return handleFile(url.pathname, env);
@@ -648,7 +664,7 @@ export default {
       try { body = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
       try {
         return url.pathname === "/api/apply" ? await handleApply(body, env) : await handleVerify(body, env);
-      } catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
+      } catch (e) { console.log("public " + url.pathname + ": " + e.message); return json({ ok: false, errors: ["Something went wrong on our end — please try again."] }, 500); }
     }
     if (req.method === "POST" && (url.pathname === "/api/draft" || url.pathname === "/api/submit")) {
       let body;
@@ -661,6 +677,7 @@ export default {
     return new Response("Not found", { status: 404 });
   },
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(event && event.cron === "0 2 * * *" ? funnelDaily(env) : handleScheduled(env));
+    const job = event && event.cron === "0 2 * * *" ? funnelDaily(env) : handleScheduled(env);
+    ctx.waitUntil(job.catch(e => console.log("scheduled " + (event && event.cron) + ": " + e.message)));
   },
 };
