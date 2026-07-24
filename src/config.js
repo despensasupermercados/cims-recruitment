@@ -84,19 +84,28 @@ export const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
 
 // --- Applicant funnel -------------------------------------------------------
 // Funnel notifications go to the two interviewers directly (per Miguel, 2026-07-23).
+// ============================================================================
+// >>> SANDBOX ACTIVE (2026-07-23 acceptance test) — team + approver emails are
+// redirected to Miguel's own inboxes so NO real team member is emailed.
+// TO REVERT after the test, restore these PRODUCTION values:
+//   notify:         ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"]
+//   replyTo:        "recruitment@tdgcm.ph"
+//   finalApprovers: Ray -> "Ray.Guerra@dg3.com" , Rolando -> "Rolando.Abellan@dg3.com"
+//   gmEmail:        "Miguel.Sanmartin@dg3.com"
+// ============================================================================
 export const FUNNEL = {
-  notify: ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"],
-  replyTo: "recruitment@tdgcm.ph", // applicant replies land in the monitored TDG recruitment inbox
+  notify: ["sanmartin@iyassu.com"],                        // SANDBOX (prod: yanna+april @tdgcm.ph)
+  replyTo: "sanmartin@me.com",                             // SANDBOX (prod: recruitment@tdgcm.ph)
   testUrl: "https://bigfive-test.com/test",
   resultUrl: "https://bigfive-test.com/result/", // + result ID (server-side fetch)
   cooldownDays: 365, // rejected applicants may re-apply after 12 months (SOP v1.1 §10)
   // Final-interview approvers. EITHER one's Approve click authorizes arranging the
   // interview (Miguel: they always work together). The hiring decision stays the live interview.
   finalApprovers: [
-    { name: "Ray", email: "Ray.Guerra@dg3.com" },
-    { name: "Rolando", email: "Rolando.Abellan@dg3.com" },
+    { name: "Ray", email: "sanmartin@sudespensa.cl" },     // SANDBOX (prod: Ray.Guerra@dg3.com)
+    { name: "Rolando", email: "sanmartin@sudespensa.cl" }, // SANDBOX (prod: Rolando.Abellan@dg3.com)
   ],
-  gmEmail: "Miguel.Sanmartin@dg3.com", // GM — sole authority for SOP v1.1 threshold exceptions
+  gmEmail: "sanmartin@iyassu.com", // SANDBOX (prod: Miguel.Sanmartin@dg3.com) — GM exception authority
   endorseNudgeDays: 5, // days of silence after endorsement before nudging the endorser
 };
 
