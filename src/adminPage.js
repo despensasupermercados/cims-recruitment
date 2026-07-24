@@ -26,7 +26,7 @@ h1{font-family:Outfit;font-size:22px;font-weight:800;color:var(--navy);margin:0 
 .tab.on{background:var(--navy);color:#fff;border-color:var(--navy)}
 .tab .n{font-size:11px;font-weight:800;background:rgba(0,0,0,.08);border-radius:20px;padding:1px 7px}
 .tab.on .n{background:rgba(255,255,255,.2)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,380px));gap:13px;justify-content:start}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(18,44,71,.05)}
 .card .hd{display:flex;align-items:flex-start;gap:10px}
 .card .nm{font-family:Outfit;font-weight:700;font-size:15px;color:var(--navy);flex:1}
@@ -58,6 +58,21 @@ textarea{min-height:62px;resize:vertical}
 .sc{flex:1;text-align:center;background:#FAFCFE;border:1px solid var(--line);border-radius:8px;padding:5px 2px}
 .sc .v{font-family:Outfit;font-weight:800;font-size:14px;color:var(--navy)}
 .sc .k{font-size:8px;font-weight:700;color:var(--mut);letter-spacing:.5px}
+.status{margin-top:11px;font-size:12px;font-weight:700;padding:8px 12px;border-radius:9px;line-height:1.35}
+.st-act{background:#FDF4E3;color:#9a6410}.st-wait{background:#EEF3F8;color:#54657c}.st-good{background:#EDF7E8;color:#347022}.st-closed{background:#F4EDED;color:#9a4034}
+.stepper{display:flex;margin:13px 0 2px}
+.stp{flex:1;display:flex;flex-direction:column;align-items:center;position:relative}
+.stp .d{width:20px;height:20px;border-radius:50%;background:#E4EAF2;color:#9fb0c2;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
+.stp .lb{font-size:7.5px;font-weight:700;letter-spacing:.3px;color:var(--mut);margin-top:4px;text-transform:uppercase}
+.stp.done .d{background:var(--green);color:#fff}.stp.done .lb{color:var(--navy)}
+.stp.cur .d{background:#fff;border:2px solid var(--navy);color:var(--navy)}.stp.cur .lb{color:var(--navy)}
+.stp.closed .d{background:var(--red);color:#fff}.stp.closed .lb{color:var(--red)}
+.stp::before{content:"";position:absolute;top:9px;left:-50%;width:100%;height:2px;background:#E4EAF2;z-index:0}
+.stp:first-child::before{display:none}.stp.done::before,.stp.cur::before{background:var(--green)}
+@keyframes flash{0%{box-shadow:0 0 0 3px rgba(95,185,70,.55)}100%{box-shadow:0 1px 3px rgba(18,44,71,.05)}}
+.card.flash{animation:flash 1.4s ease-out}
+button.wait{opacity:.7;cursor:default}
+@media(max-width:560px){button{padding:11px 15px}.grid{grid-template-columns:1fr}}
 </style></head><body>
 <div class="topbar"><div class="in">
   <span class="t1">CIMS</span><span class="t2">Recruitment</span>
@@ -75,7 +90,7 @@ var KEY=new URLSearchParams(location.search).get('k')||'';
 document.querySelectorAll('.nav a').forEach(function(a){a.href=a.getAttribute('href').replace('KEYHOLDER',encodeURIComponent(KEY));});
 var REJECT=["Not the best candidate","Not eligible for rehire","Does not meet qualifications","Poor English / communication","Limited technical skill","Attitude","Dishonesty","Age","Salary expectations","Other"];
 var INTERVIEWERS=["Yanna","April"];
-var DATA=[],TL=THRESH();var CUR='action';
+var DATA=[],TL=THRESH();var CUR='action';var FLASH='';
 function THRESH(){return{floor:440,priority:480};}
 var BUCKETS=[
  ['action','Needs action',['Tested — Passed','Interview Assigned','Interviewed — Recommend','Endorsed — Awaiting Approval','Exception Requested']],
@@ -104,6 +119,7 @@ function render(){
  var g=document.getElementById('grid');
  if(!rows.length){g.innerHTML='<div class="empty">No candidates in this stage.</div>';return;}
  g.innerHTML=rows.map(card).join('');
+ if(FLASH){var fe=document.getElementById('c_'+FLASH);if(fe)fe.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){FLASH='';},1500);}
 }
 function band(c){
  if(c.verdict==='Auto-Rejected'||c.stage==='Tested — Rejected')return['rej','Below '+TL.floor];
@@ -111,8 +127,43 @@ function band(c){
  if(c.fit>=TL.floor)return['pass','Pass'];
  return['pass',''];
 }
+// stage -> { step (completed nodes 1..6), tone, closed, text(c) }
+function meta(c){
+ var s=c.stage,iv=c.interviewer||'the interviewer',df=c.dateFinal||'',rr=c.rejectionReason||'';
+ var M={
+  'Applied':[1,'wait',0,'Awaiting assessment'],
+  'Pending Test':[1,'wait',0,'Awaiting assessment'],
+  'Tested — Passed':[2,'act',0,'Passed screening — assign a first interview'],
+  'Interview Assigned':[2,'act',0,'In first interview with '+iv+' — record the outcome'],
+  'Interviewed — Recommend':[3,'act',0,'Recommended — endorse to Ray & Rolando'],
+  'Endorsed — Awaiting Approval':[4,'wait',0,'Endorsed — awaiting Ray or Rolando to approve'],
+  'Final Scheduled':[4,'good',0,'Final interview scheduled'+(df?' — '+df:'')],
+  'Approved':[6,'good',0,'Approved — in visa & medicals'],
+  'Interviewed — Not advancing':[3,'closed',1,'Closed — not advancing after interview'],
+  'Rejected — Manual':[2,'closed',1,'Closed — rejected'+(rr?' ('+rr+')':'')],
+  'Endorsement Declined':[4,'closed',1,'Closed — declined by management'],
+  'Tested — Rejected':[2,'closed',1,'Closed — did not pass screening'],
+  'Auto-Rejected':[2,'closed',1,'Closed — did not pass screening'],
+  'Expired — No Test':[1,'closed',1,'Closed — no assessment (expired)'],
+  'Exception Requested':[2,'wait',0,'GM exception requested — awaiting decision']
+ };
+ var m=M[s]||[1,'wait',0,esc(s)];
+ return {step:m[0],tone:m[1],closed:m[2],text:m[3]};
+}
+var STEPS=['Apply','Test','Interview','Endorse','Final','Hired'];
+function stepper(m){
+ var h='<div class="stepper">';
+ for(var i=1;i<=6;i++){
+  var cls='';
+  if(i<=m.step){cls=(m.closed&&i===m.step)?'closed':'done';}
+  else if(i===m.step+1&&!m.closed){cls='cur';}
+  var glyph=(cls==='done')?'&#10003;':(cls==='closed'?'&#215;':i);
+  h+='<div class="stp '+cls+'"><div class="d">'+glyph+'</div><div class="lb">'+STEPS[i-1]+'</div></div>';
+ }
+ return h+'</div>';
+}
 function card(c){
- var b=band(c);
+ var b=band(c),m=meta(c);
  var chips='';
  chips+='<span class="chip">'+esc(c.source||'—')+'</span>';
  if(c.shipboard)chips+='<span class="chip g">Shipboard</span>';
@@ -122,18 +173,22 @@ function card(c){
  var scores=(sc.N!=null)?'<div class="scores">'+['N','E','O','A','C'].map(function(k){return '<div class="sc"><div class="v">'+(sc[k]==null?'—':sc[k])+'</div><div class="k">'+k+'</div></div>';}).join('')+'</div>':'';
  var det='Stage: '+esc(c.stage)+'\\nEmail: '+esc(c.email)+'  Phone: '+esc(c.phone)+
    (c.dateApplied?'\\nApplied: '+esc(c.dateApplied):'')+(c.dateTested?'  Tested: '+esc(c.dateTested):'')+
+   (c.dateEndorsed?'\\nEndorsed: '+esc(c.dateEndorsed):'')+
    (c.dateFinal?'\\nFinal interview: '+esc(c.dateFinal):'')+
    (c.rejectionReason?'\\nRejection: '+esc(c.rejectionReason):'')+
    (c.interviewNotes?'\\n\\nInterview notes:\\n'+esc(c.interviewNotes):'')+
    (c.recommendation?'\\n\\nRecommendation:\\n'+esc(c.recommendation):'');
- return '<div class="card" id="c_'+c.id+'">'+
+ var acts=actions(c)+
+    (c.resumeUrl?'<button class="bo" onclick="window.open(\\''+c.resumeUrl+'\\')">Resume</button>':'')+
+    '<button class="bo" onclick="tg(\\'d_'+c.id+'\\')">Details</button>';
+ return '<div class="card'+(FLASH===c.id?' flash':'')+'" id="c_'+c.id+'">'+
   '<div class="hd"><div class="nm">'+esc(c.name)+'</div><div class="fit">'+(c.fit||'—')+'<span class="bd '+b[0]+'">'+esc(b[1])+'</span></div></div>'+
   '<div class="meta"><b>'+esc(c.position||'—')+'</b></div>'+
   scores+
+  stepper(m)+
+  '<div class="status st-'+m.tone+'">'+m.text+'</div>'+
   '<div class="chips">'+chips+'</div>'+
-  '<div class="acts">'+actions(c)+
-    (c.resumeUrl?'<button class="bo" onclick="window.open(\\''+c.resumeUrl+'\\')">Resume</button>':'')+
-    '<button class="bo" onclick="tg(\\'d_'+c.id+'\\')">Details</button></div>'+
+  (acts?'<div class="acts">'+acts+'</div>':'')+
   '<div class="det" id="d_'+c.id+'">'+det+'</div>'+
   '<div class="panel" id="p_'+c.id+'"></div>'+
  '</div>';
@@ -152,18 +207,20 @@ function actions(c){
 function tg(id){document.getElementById(id).classList.toggle('on');}
 function panel(id,html){var p=document.getElementById('p_'+id);p.innerHTML=html;p.classList.add('on');}
 function opts(arr){return arr.map(function(o){return '<option>'+esc(o)+'</option>';}).join('');}
-function pAssign(id){panel(id,'<label>Assign first interview to</label><select id="f1_'+id+'">'+opts(INTERVIEWERS)+'</select><div class="acts"><button class="bn" onclick="doAct(\\''+id+'\\',\\'assign\\',{interviewer:v(\\'f1_'+id+'\\')})">Confirm</button></div>');}
-function pOutcome(id){panel(id,'<label>Interview outcome</label><textarea id="n_'+id+'" placeholder="Notes (optional)"></textarea><div class="acts"><button class="bg" onclick="doAct(\\''+id+'\\',\\'outcome\\',{result:\\'recommend\\',notes:v(\\'n_'+id+'\\')})">Recommend to final</button><button class="br" onclick="pOutNo(\\''+id+'\\')">Not advancing</button></div>');}
-function pOutNo(id){panel(id,'<label>Reason for not advancing</label><select id="r_'+id+'">'+opts(REJECT)+'</select><label>Notes</label><textarea id="n_'+id+'"></textarea><div class="acts"><button class="br" onclick="doAct(\\''+id+'\\',\\'outcome\\',{result:\\'no\\',reason:v(\\'r_'+id+'\\'),notes:v(\\'n_'+id+'\\')})">Confirm — not advancing</button></div>');}
-function pEndorse(id){panel(id,'<label>Recommendation for Ray &amp; Rolando</label><textarea id="e_'+id+'" placeholder="Why this candidate should advance to the final interview&#8230;"></textarea><div class="tiny">Sends the profile with Approve / Decline links to Ray and Rolando. Either one approving schedules the next available Monday.</div><div class="acts"><button class="bg" onclick="doAct(\\''+id+'\\',\\'endorse\\',{recommendation:v(\\'e_'+id+'\\')})">Send endorsement</button></div>');}
-function pReject(id){panel(id,'<label>Rejection reason</label><select id="r_'+id+'">'+opts(REJECT)+'</select><div class="acts"><button class="br" onclick="doAct(\\''+id+'\\',\\'reject\\',{reason:v(\\'r_'+id+'\\')})">Confirm rejection</button></div>');}
-function pException(id){panel(id,'<label>Justification for GM exception</label><textarea id="x_'+id+'" placeholder="Documented reason to advance a candidate below the SOP threshold&#8230;"></textarea><div class="tiny">Emails the GM. The candidate is held until a written decision.</div><div class="acts"><button class="bn" onclick="doAct(\\''+id+'\\',\\'exception\\',{reason:v(\\'x_'+id+'\\')})">Request exception</button></div>');}
+function pAssign(id){panel(id,'<label>Assign first interview to</label><select id="f1_'+id+'">'+opts(INTERVIEWERS)+'</select><div class="acts"><button class="bn" onclick="doAct(this,\\''+id+'\\',\\'assign\\',{interviewer:v(\\'f1_'+id+'\\')},\\'Assigned — record the outcome after the interview\\')">Confirm</button></div>');}
+function pOutcome(id){panel(id,'<label>Interview outcome notes</label><textarea id="n_'+id+'" placeholder="How did the interview go? (optional)"></textarea><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'outcome\\',{result:\\'recommend\\',notes:v(\\'n_'+id+'\\')},\\'Recommended — ready to endorse to Ray &amp; Rolando\\')">Recommend to final</button><button class="br" onclick="pOutNo(\\''+id+'\\')">Not advancing</button></div>');}
+function pOutNo(id){panel(id,'<label>Reason for not advancing</label><select id="r_'+id+'">'+opts(REJECT)+'</select><label>Notes</label><textarea id="n_'+id+'"></textarea><div class="acts"><button class="br" onclick="doAct(this,\\''+id+'\\',\\'outcome\\',{result:\\'no\\',reason:v(\\'r_'+id+'\\'),notes:v(\\'n_'+id+'\\')},\\'Marked not advancing — moved to Closed\\')">Confirm — not advancing</button></div>');}
+function pEndorse(id){panel(id,'<label>Recommendation for Ray &amp; Rolando</label><textarea id="e_'+id+'" placeholder="Why this candidate should advance to the final interview&#8230;"></textarea><div class="tiny">Sends the profile with Approve / Decline links to Ray and Rolando. Either one approving schedules the next available Monday.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'endorse\\',{recommendation:v(\\'e_'+id+'\\')},\\'Endorsed — Ray &amp; Rolando notified, awaiting their approval\\')">Send endorsement</button></div>');}
+function pReject(id){panel(id,'<label>Rejection reason</label><select id="r_'+id+'">'+opts(REJECT)+'</select><div class="acts"><button class="br" onclick="doAct(this,\\''+id+'\\',\\'reject\\',{reason:v(\\'r_'+id+'\\')},\\'Rejected — moved to Closed\\')">Confirm rejection</button></div>');}
+function pException(id){panel(id,'<label>Justification for GM exception</label><textarea id="x_'+id+'" placeholder="Documented reason to advance a candidate below the SOP threshold&#8230;"></textarea><div class="tiny">Emails the GM. The candidate is held until a written decision.</div><div class="acts"><button class="bn" onclick="doAct(this,\\''+id+'\\',\\'exception\\',{reason:v(\\'x_'+id+'\\')},\\'Exception request sent to the GM\\')">Request exception</button></div>');}
 function v(id){return (document.getElementById(id)||{}).value||'';}
-function doAct(id,action,params){
+function doAct(btn,id,action,params,msg){
+ if(btn){btn.dataset.t=btn.innerHTML;btn.innerHTML='Saving&#8230;';btn.classList.add('wait');btn.disabled=true;}
  fetch('/api/admin/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({k:KEY,id:id,action:action,params:params})})
  .then(function(r){return r.json();}).then(function(d){
-  if(d.ok){toast('Done');load();}else{toast((d.errors||['Error'])[0]);}
- }).catch(function(){toast('Network error');});
+  if(d.ok){FLASH=id;toast(msg||'Saved');load();}
+  else{toast((d.errors||['Something went wrong'])[0]);if(btn){btn.innerHTML=btn.dataset.t;btn.classList.remove('wait');btn.disabled=false;}}
+ }).catch(function(){toast('Network error — please try again');if(btn){btn.innerHTML=btn.dataset.t;btn.classList.remove('wait');btn.disabled=false;}});
 }
 load();
 </script></body></html>`;
