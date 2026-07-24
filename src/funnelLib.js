@@ -34,7 +34,7 @@ export function applyGates(s, t = THRESHOLDS) {
 /**
  * Extract {N,E,O,A,C} from the bigfive-test.com result page HTML.
  * The page embeds a flight payload with escaped JSON per domain:
- *   \\"domain\\":\\"N\\", ... \\"score\\":34
+ *   \"domain\":\"N\", ... \"score\":34
  * Deterministic — no AI in the scoring path. Returns null if any domain is missing.
  */
 export function parseBigFiveHtml(html) {
