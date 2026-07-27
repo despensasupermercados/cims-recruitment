@@ -3,15 +3,15 @@
 // (fixed SELECTs in src/consoleData.js — this worker can never write there).
 
 import { PAGE_HTML, LOCKED_HTML } from "./page.js";
-import { RECIPIENTS, ADMINS, FROM, FORM_URL, APPLY_URL, HOSTS, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL } from "./config.js";
+import { RECIPIENTS, ADMINS, FROM, FORM_URL, APPLY_URL, HOSTS, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL, OPS_ALERT } from "./config.js";
 import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday } from "./lib.js";
 import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
 import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS, nextFinalMonday, finalSlotText } from "./funnelLib.js";
-import { planAdminAction, planDecision } from "./adminLib.js";
+import { planAdminAction, planDecision, STAGES } from "./adminLib.js";
 import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, findCandidateById, findCandidateByToken, listAllCandidates, listByStage, cf } from "./candidates.js";
-import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderFirstInterview, renderHired, renderFinalRegret, renderAssignmentNotify, renderCrewAdminHandoff, renderExpiryNotice } from "./funnelEmails.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderFirstInterview, renderHired, renderFinalRegret, renderAssignmentNotify, renderCrewAdminHandoff, renderExpiryNotice, renderCronFailure } from "./funnelEmails.js";
 import { ADMIN_HTML, REPORTS_HTML } from "./adminPage.js";
 import { CANDIDATES } from "./config.js";
 
@@ -152,6 +152,39 @@ async function sendEmail(env, { to, cc, subject, html, replyTo, templateId, idem
   return res.json();
 }
 
+/**
+ * A scheduled job died. Say so out loud.
+ *
+ * The log line is kept — it is the only record if the mail path is also down —
+ * but it is no longer the whole response. OPS_ALERT is deliberately NOT routed
+ * through FUNNEL's sandbox redirect: an alert that follows the funnel into a
+ * test inbox is an alert that does not arrive, and the failure it reports is
+ * invisible by definition.
+ *
+ * Every failure path here is swallowed on purpose. This function runs inside the
+ * catch of the only thing standing between the worker and a silent death; if it
+ * throws, waitUntil surfaces an unhandled rejection and we learn nothing extra.
+ */
+async function reportCronFailure(env, cron, err) {
+  const message = (err && err.message) || String(err);
+  console.log("scheduled " + cron + ": " + message);
+  if (!mailReady(env)) { console.log("cron alert NOT sent for " + cron + ": no mail transport bound"); return; }
+  try {
+    await sendEmail(env, {
+      to: [OPS_ALERT],
+      subject: "CIMS Recruitment: scheduled job failed (" + cron + ")",
+      html: renderCronFailure(cron, message, err && err.stack),
+      templateId: "recruitment.ops.cron-failure.v1",
+      // One alert per schedule per day. A cron that fails at 02:00 every day for
+      // a week should produce seven emails, not one that gets ignored — but a
+      // retry storm within the same day must not produce seventy.
+      idempotencyKey: "cron-fail:" + cron + ":" + new Date().toISOString().slice(0, 10),
+    });
+  } catch (e) {
+    console.log("cron alert FAILED for " + cron + ": " + e.message);
+  }
+}
+
 function keyedFormUrl(env) {
   return FORM_URL + (env.FORM_KEY ? "/?k=" + env.FORM_KEY : "");
 }
@@ -254,7 +287,7 @@ async function handleApply(body, env) {
       // Cooldown over: reset the record for a fresh run — clear ALL stale funnel data
       // so a passing re-applicant doesn't carry an old rejection reason or old scores.
       await updateCandidate(env, existing.id, {
-        [CF.stage]: "Applied", [CF.verdict]: "Pending Test", [CF.resultId]: "",
+        [CF.stage]: STAGES.APPLIED, [CF.verdict]: "Pending Test", [CF.resultId]: "",
         [CF.phone]: clean.phone, [CF.position]: clean.position, [CF.source]: clean.source,
         [CF.dateApplied]: new Date().toISOString().slice(0, 10),
         [CF.rejectionReason]: null, [CF.fitScore]: null, [CF.thresholdVersion]: "", [CF.dateTested]: null,
@@ -266,7 +299,7 @@ async function handleApply(body, env) {
     if (verdict === "Pending Test" || verdict === "Expired — No Test") {
       // Re-open with a fresh clock so the daily sweep doesn't immediately re-expire it.
       await updateCandidate(env, existing.id, {
-        [CF.verdict]: "Pending Test", [CF.stage]: "Applied",
+        [CF.verdict]: "Pending Test", [CF.stage]: STAGES.APPLIED,
         [CF.dateApplied]: new Date().toISOString().slice(0, 10),
       }, cf(existing, "audit"), "Duplicate application — test invite re-sent, clock reset.");
       await sendInvite(env, cf(existing, "name") || clean.name, clean.email);
@@ -373,8 +406,12 @@ async function handleVerify(body, env) {
     [CF.verdict]: verdictLabel,
     [CF.thresholdVersion]: THRESHOLDS.version,
     [CF.dateTested]: today,
-    [CF.stage]: gate === "reject" ? "Tested — Rejected" : "Tested — Passed",
-    ...(gate === "reject" ? { [CF.rejectionReason]: "Failed Big 5 / psych" } : {}),
+    [CF.stage]: gate === "reject" ? STAGES.TESTED_REJECTED : STAGES.PASSED,
+    // Must match the Airtable option EXACTLY. This previously read "Failed Big 5
+    // / psych", which typecast happily created alongside the base's real option
+    // "Failed Big 5 / psych analysis" — two buckets for one reason, so the
+    // digest's "Top rejection reasons" line never added up.
+    ...(gate === "reject" ? { [CF.rejectionReason]: "Failed Big 5 / psych analysis" } : {}),
   }, cf(rec, "audit"),
     "Result " + resultId + " scored: N" + scores.N + " E" + scores.E + " O" + scores.O + " A" + scores.A + " C" + scores.C +
     " → Fit " + fit + " → " + verdictLabel + " (thresholds " + THRESHOLDS.version +
@@ -598,7 +635,7 @@ async function funnelDaily(env) {
       const audit = cf(rec, "audit") || "";
       if (days >= 30) {
         await updateCandidate(env, rec.id, {
-          [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
+          [CF.verdict]: "Expired — No Test", [CF.stage]: STAGES.EXPIRED,
         }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies). Closure notice sent.");
         // Closing a file silently is how a candidate ends up chasing us months later.
         if (mailReady(env) && email) {
@@ -623,7 +660,7 @@ async function funnelDaily(env) {
     } catch (e) { console.log("funnelDaily pending " + rec.id + ": " + e.message); }
   }
   // Endorsement nudge: still awaiting Ray/Rolando after N days.
-  const endorsed = await listByStage(env, "Endorsed — Awaiting Approval");
+  const endorsed = await listByStage(env, STAGES.ENDORSED);
   for (const rec of endorsed) {
     try {
       const when = cf(rec, "dateEndorsed");
@@ -825,7 +862,8 @@ export default {
     return new Response("Not found", { status: 404 });
   },
   async scheduled(event, env, ctx) {
-    const job = event && event.cron === "0 2 * * *" ? funnelDaily(env) : handleScheduled(env);
-    ctx.waitUntil(job.catch(e => console.log("scheduled " + (event && event.cron) + ": " + e.message)));
+    const cron = (event && event.cron) || "unknown";
+    const job = cron === "0 2 * * *" ? funnelDaily(env) : handleScheduled(env);
+    ctx.waitUntil(job.catch(e => reportCronFailure(env, cron, e)));
   },
 };
