@@ -2,6 +2,7 @@
 // for the applicant funnel. Every write appends to the Audit Log field with a timestamp.
 
 import { AIRTABLE, CANDIDATES } from "./config.js";
+import { STAGES } from "./adminLib.js";
 
 const AT_API = "https://api.airtable.com/v0";
 
@@ -89,25 +90,32 @@ export async function createCandidate(env, clean, resumeUrl, auditMsg) {
     ...(clean.referrer ? { [F.referrer]: clean.referrer } : {}),
     [F.shipboard]: clean.shipboard,
     [F.printer]: clean.printer,
-    [F.stage]: "Applied",
+    [F.stage]: STAGES.APPLIED,
     [F.verdict]: "Pending Test",
     [F.dateApplied]: new Date().toISOString().slice(0, 10),
     ...(resumeUrl ? { [F.resume]: [{ url: resumeUrl, filename: clean.resume.name }] } : {}),
     [F.consent]: true,
     [F.audit]: auditLine(auditMsg),
   };
-  const data = await at(env, `${CANDIDATES.tableId}?typecast=true`, {
+  // No typecast. Airtable's typecast silently CREATES any singleSelect option it
+  // does not recognise — no error, no log — so a typo in a stage or reason string
+  // becomes a permanent schema option and the digest's rollups quietly split in
+  // two. Every value written here is drawn from the closed lists in config.js;
+  // if one of them is missing from the base the write now fails loudly, which is
+  // the intended behaviour. Add the option in Airtable first, then in config.js.
+  const data = await at(env, CANDIDATES.tableId, {
     method: "POST",
-    body: JSON.stringify({ records: [{ fields }], typecast: true }),
+    body: JSON.stringify({ records: [{ fields }] }),
   });
   return data.records[0];
 }
 
 export async function updateCandidate(env, id, fields, prevAudit, auditMsg) {
   const audit = (prevAudit ? prevAudit + "\n" : "") + auditLine(auditMsg);
-  await at(env, `${CANDIDATES.tableId}/${id}?typecast=true`, {
+  // No typecast — see createCandidate above for why.
+  await at(env, `${CANDIDATES.tableId}/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ fields: { ...fields, [F.audit]: audit }, typecast: true }),
+    body: JSON.stringify({ fields: { ...fields, [F.audit]: audit } }),
   });
 }
 
