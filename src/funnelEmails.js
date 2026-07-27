@@ -381,6 +381,43 @@ export function renderCrewAdminHandoff(c, notes) {
   return shell(inner, FOOT_TEAM, CTX_TEAM);
 }
 
+/**
+ * Ops alert — a scheduled job threw and did not finish.
+ *
+ * This is the one email in the file with no candidate in it. It exists because
+ * until 2026-07-27 the scheduled() handler caught its own failures into
+ * console.log and stopped there. A Worker log nobody tails is not a signal: if
+ * the daily sweep died, test reminders, 30-day expiries and endorsement nudges
+ * all stopped silently, and the first person to notice would have been a
+ * candidate asking why nobody ever replied.
+ *
+ * Deliberately plain — no boarding-pass card, no branding flourish. It names the
+ * cron, the error and exactly what stopped running, because the reader is being
+ * interrupted and needs to decide in five seconds whether to act now.
+ */
+export function renderCronFailure(cron, message, stack) {
+  const WHAT = {
+    "0 2 * * *": "Applicant funnel daily sweep — test reminders (day 3 &amp; day 7), 30-day application expiries, and endorsement nudges to Ray &amp; Rolando.",
+    "0 1 * * MON": "Monday check — monthly digest send on the first Monday of the month.",
+    "0 1 * * THU": "Thursday check — submission reminder to the recruitment admins.",
+  };
+  const inner = `<div style="padding:22px 24px 24px;">
+    ${titleTeam("Scheduled job failed")}
+    ${amber(`The <span style="font-family:${FONT_M};font-size:12px;">${esc(cron)}</span> job threw and did not complete. Nothing it was due to send has been sent.`)}
+    <div style="background:${CLOUD};border-radius:8px;padding:12px 16px;margin-top:14px;">
+      <table cellpadding="0" cellspacing="0" width="100%">
+        ${factRow("Schedule", `<span style="font-family:${FONT_M};font-size:12px;">${esc(cron)}</span>`)}
+        ${factRow("Error", `<span style="color:${RED};font-weight:700;">${esc(message)}</span>`)}
+      </table>
+    </div>
+    ${para("<b>What did not run:</b> " + (WHAT[cron] || "Unknown schedule — this cron is not one the worker recognises, which is itself worth investigating."))}
+    ${para("Cloudflare will not retry this run. Whatever was due today is simply missed; the next scheduled run will pick up anything still outstanding, but a candidate whose 30-day window closed today will not be closed until it does.")}
+    ${stack ? `<div style="margin-top:12px;"><div style="font-family:${FONT_M};font-size:10.5px;color:${SLATE};white-space:pre-wrap;background:${CLOUD};border:1px solid ${BORDER};border-radius:8px;padding:10px 12px;">${esc(stack)}</div></div>` : ""}
+    ${finePrint("Sent to the operations address, which is deliberately outside the funnel sandbox redirect — an alert that gets redirected with the funnel is an alert that never arrives.")}
+  </div>`;
+  return shell(inner, FOOT_TEAM, CTX_TEAM);
+}
+
 /** 30-day auto-close: never let a file close in silence. Not a rejection. */
 export function renderExpiryNotice(name) {
   const inner = `<div style="padding:22px 24px 24px;">
