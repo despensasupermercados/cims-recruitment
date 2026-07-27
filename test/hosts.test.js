@@ -17,16 +17,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { FUNNEL, ADMINS, HOSTS, FORM_URL, APPLY_URL } from "../src/config.js";
+import { FUNNEL, FUNNEL_PRODUCTION, SANDBOX, ADMINS, HOSTS, FORM_URL, APPLY_URL } from "../src/config.js";
 
 const SRC = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
 
-// The set the router actually gates on, read out of the source rather than
+// The sets the router actually gates on, read out of the source rather than
 // restated here — a hardcoded copy drifts from the file it is meant to guard.
-function publicPaths() {
-  const block = SRC.match(/const PUBLIC_PATHS = new Set\(\[([\s\S]*?)\]\)/);
-  assert.ok(block, "could not find PUBLIC_PATHS in worker.js");
+function pathSet(name) {
+  const block = SRC.match(new RegExp("const " + name + " = new Set\\(\\[([\\s\\S]*?)\\]\\)"));
+  assert.ok(block, "could not find " + name + " in worker.js");
   return new Set([...block[1].matchAll(/"([^"]+)"/g)].map(m => m[1]));
+}
+
+function publicPaths() {
+  // PUBLIC_PATHS is composed from the other two, so resolve it the same way.
+  return new Set([...pathSet("APPLY_ONLY_PATHS"), ...pathSet("TRANSITIONAL_PATHS"), "/health"]);
 }
 
 test("the public host serves candidate paths and nothing else", () => {
@@ -49,8 +54,31 @@ test("resume downloads are never reachable from the public host", () => {
   for (const p of [...pub]) {
     assert.ok(!p.startsWith("/files"), "candidate PII must not be served from " + HOSTS.apply);
   }
-  assert.match(SRC, /url\.hostname === HOSTS\.apply && !PUBLIC_PATHS\.has\(url\.pathname\)/,
+  assert.match(SRC, /const onApplyHost = url\.hostname === HOSTS\.apply/,
+    "the public-host test is missing or was rewritten");
+  assert.match(SRC, /onApplyHost && !PUBLIC_PATHS\.has\(url\.pathname\)/,
     "the host gate is missing or was rewritten — /files/ may now answer on the public host");
+});
+
+test("the application endpoints are single-homed so a host-scoped rate rule works", () => {
+  // The whole point of the split is that a WAF rate rule on apply.cims.work
+  // covers the abuse surface. If /api/apply or /api/upload also answer on the
+  // staff host, the rule is bypassed by changing one word in the request and
+  // the R2 bucket fills anyway. These must exist on the public host ONLY.
+  const applyOnly = pathSet("APPLY_ONLY_PATHS");
+  for (const p of ["/apply", "/api/apply", "/api/upload"]) {
+    assert.ok(applyOnly.has(p), p + " must be single-homed — a rate rule on " + HOSTS.apply + " cannot cover it otherwise");
+  }
+  // And the router must actually reject them off the public host.
+  assert.match(SRC, /!onApplyHost && APPLY_ONLY_PATHS\.has\(url\.pathname\)/,
+    "the staff-host rejection is missing — the application endpoints still answer on " + HOSTS.staff);
+  // A bookmarked /apply on the staff host redirects rather than dead-ends.
+  assert.match(SRC, /Response\.redirect\(APPLY_URL \+ "\/apply"/,
+    "GET /apply on the staff host should redirect to the public host, not 404");
+  // Transitional paths are the emailed ones, and only those. Anything else
+  // parked here is a hole that will outlive the reason it was opened.
+  assert.deepEqual([...pathSet("TRANSITIONAL_PATHS")].sort(), ["/api/verify", "/verify"],
+    "only the emailed verification links may stay dual-homed");
 });
 
 test("candidate links point at the apply host, staff links at the staff host", () => {
@@ -84,28 +112,54 @@ test("the hired handover resolves from FUNNEL, not from the production ADMINS bl
     "a funnel email addresses ADMINS.crewAdmin directly — that address is not sandboxed");
 });
 
-test("SANDBOX ACTIVE: no funnel email can reach a real company inbox", () => {
-  // While the sandbox comment block is present in config.js, every address the
-  // funnel can send to must be one of Miguel's own. Delete the marker at go-live
-  // and this test stops applying — that deletion is the deliberate switch.
-  const cfg = readFileSync(new URL("../src/config.js", import.meta.url), "utf8");
-  if (!cfg.includes(">>> SANDBOX ACTIVE")) return;
+// Every address the funnel can put in a To/Cc/Reply-To header.
+function reachableAddresses(f) {
+  return [...f.notify, f.replyTo, f.crewAdmin, f.gmEmail, ...f.finalApprovers.map(a => a.email)].filter(Boolean);
+}
 
-  const reachable = [
-    ...FUNNEL.notify,
-    FUNNEL.replyTo,
-    FUNNEL.crewAdmin,
-    FUNNEL.gmEmail,
-    ...FUNNEL.finalApprovers.map(a => a.email),
-  ].filter(Boolean);
-
+test("the sandbox switch is honoured in whichever direction it is set", () => {
+  const reachable = reachableAddresses(FUNNEL);
   assert.ok(reachable.length >= 5, "expected every funnel recipient to be listed");
-  for (const a of reachable) {
-    assert.ok(!/@(dg3\.com|tdgcm\.ph)$/i.test(a),
-      "SANDBOX is active but the funnel can still email " + a);
+  assert.equal(typeof SANDBOX, "boolean", "SANDBOX must be an explicit boolean");
+
+  if (SANDBOX) {
+    // Nothing may reach a real company inbox...
+    for (const a of reachable) {
+      assert.ok(!/@(dg3\.com|tdgcm\.ph)$/i.test(a),
+        "SANDBOX is on but the funnel can still email " + a);
+    }
+    // ...and the door must be shut. Redirected addresses PLUS an open door is
+    // the genuinely dangerous state: real people applying into a pipeline that
+    // notifies nobody. It must not be reachable by flipping one thing.
+    assert.equal(FUNNEL.open, false,
+      "SANDBOX is on but /apply is open — candidates would apply into a pipeline nobody is watching");
+  } else {
+    // Go-live. A HALF-REVERT is the failure this catches: crewAdmin restored,
+    // notify forgotten, funnel live, Yanna never told anyone applied. Every
+    // field must match production exactly — not merely 'look like' production.
+    for (const k of ["open", "replyTo", "crewAdmin", "gmEmail"]) {
+      assert.deepEqual(FUNNEL[k], FUNNEL_PRODUCTION[k], "half-revert: FUNNEL." + k + " is not the production value");
+    }
+    assert.deepEqual(FUNNEL.notify, FUNNEL_PRODUCTION.notify, "half-revert: the team notify list is not the production list");
+    assert.deepEqual(FUNNEL.finalApprovers, FUNNEL_PRODUCTION.finalApprovers, "half-revert: Ray/Rolando are not the production approvers");
+    assert.equal(FUNNEL.open, true, "production must accept applications");
   }
-  // And the production monthly-form owners are deliberately untouched: the
-  // digest cycle is live by design and must not be disarmed by mistake.
+});
+
+test("the production address set stays intact while the sandbox is active", () => {
+  // The sandbox must never be allowed to erode the values it will revert to.
+  const prod = reachableAddresses(FUNNEL_PRODUCTION);
+  assert.equal(prod.length, 7, "expected 2 notify + replyTo + crewAdmin + gmEmail + 2 approvers = 7");
+  for (const a of prod) {
+    assert.match(a, /@(dg3\.com|tdgcm\.ph)$/i, "production funnel address " + a + " is not a company inbox");
+  }
+  assert.equal(FUNNEL_PRODUCTION.crewAdmin, ADMINS.crewAdmin,
+    "the funnel's production crew handoff must be the same person as the monthly form owner");
+});
+
+test("the live monthly digest cycle is never disarmed by the funnel sandbox", () => {
+  // The digest is production by design with ten real recipients. Sandboxing the
+  // funnel must not touch it.
   assert.match(ADMINS.crewAdmin, /@dg3\.com$/i, "the monthly form owner must stay a real address");
   assert.match(ADMINS.recruitmentAdmin, /@tdgcm\.ph$/i, "the monthly form owner must stay a real address");
 });
