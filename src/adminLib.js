@@ -46,7 +46,12 @@ export function planAdminAction(action, cur, params = {}) {
     if (!who) return { ok: false, error: "Choose an interviewer." };
     return { ok: true, stage: STAGES.ASSIGNED, fields: { interviewer: who },
       audit: "First interview assigned to " + who + ".",
-      emails: [{ kind: "assignNotify", to: "team", interviewer: who }] };
+      // Two audiences, two emails: the candidate learns the application is moving
+      // and who will call; the team learns who now owns it.
+      emails: [
+        { kind: "firstInterview", to: "applicant" },
+        { kind: "assignNotify", to: "team", interviewer: who },
+      ] };
   }
 
   if (action === "outcome") {
@@ -113,13 +118,13 @@ export function planAdminAction(action, cur, params = {}) {
       return { ok: true, stage: STAGES.APPROVED, fields: { dateApproved: P.today, interviewNotes: notes },
         audit: "Final interview: HIRED. Approved — entering visa & medicals. Crew Administration notified." + (notes ? " Notes recorded." : ""),
         emails: [
-          { kind: "hiredApplicant", to: "applicant" },
+          { kind: "hired", to: "applicant" },
           { kind: "crewAdminHandoff", to: "crewAdmin", notes },
         ] };
     }
     if (P.result === "no") {
       return { ok: true, stage: STAGES.FINAL_NO, fields: { interviewNotes: notes, rejectionReason: P.reason || "Final interview — not selected" },
-        audit: "Final interview: NOT HIRED." + (notes ? " Notes recorded." : ""), emails: [{ kind: "finalRejection", to: "applicant" }] };
+        audit: "Final interview: NOT HIRED." + (notes ? " Notes recorded." : ""), emails: [{ kind: "finalRegret", to: "applicant" }] };
     }
     return { ok: false, error: "Final outcome must be hired or no." };
   }
