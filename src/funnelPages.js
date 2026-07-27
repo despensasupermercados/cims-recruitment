@@ -1,98 +1,106 @@
 // Public applicant-facing pages: /apply and /verify.
+// Travel-console dialect: navy header, itinerary ribbon, green micro-labels,
+// monospace data, luggage dropzone. All form logic/IDs unchanged.
 // NOTE: template literals must contain no backticks and no dollar-brace sequences.
 
 const HEAD = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DG3 CIMS Recruitment</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#122C47;--navy2:#1B3A5C;--green:#5FB946;--green2:#4CA338;--line:#E4EAF2;--ink:#1C2A38;--mut:#7186A0;--red:#C2402F;--bg:#EFF3F9}
+:root{--navy:#1B3A5C;--navyD:#142D48;--green:#5FB946;--green2:#4C9E37;--line:#E4EAF2;--hair:#EDEFF2;--ink:#1B3A5C;--mut:#6B7280;--faint:#9CA3AF;--cloud:#F7F8FA;--red:#C2402F;--bg:#E7EAF0;--mono:'DM Mono',ui-monospace,monospace}
 *{box-sizing:border-box}
-body{margin:0;font-family:'DM Sans',sans-serif;color:var(--ink);min-height:100vh;
- background:radial-gradient(1100px 500px at 85% -10%,rgba(95,185,70,.16),transparent 60%),
-            radial-gradient(900px 600px at -10% 110%,rgba(27,58,92,.12),transparent 55%),var(--bg)}
-.topbar{background:linear-gradient(100deg,var(--navy2) 60%,#2A5580);border-bottom:3px solid var(--green)}
-.topbar .in{max-width:640px;margin:0 auto;padding:16px;display:flex;align-items:baseline;gap:12px}
-.topbar .t1{font-family:Outfit;font-weight:800;font-size:19px;color:#fff;letter-spacing:4px}
-.topbar .t2{font-size:10px;font-weight:700;letter-spacing:2px;color:rgba(255,255,255,.62);text-transform:uppercase}
-.shell{max-width:640px;margin:0 auto;padding:30px 16px 40px}
-h1{font-family:Outfit;font-size:clamp(24px,5vw,31px);font-weight:800;color:var(--navy);margin:0 0 6px;letter-spacing:-.3px}
-.sub{font-size:14.5px;color:#43566d;line-height:1.6;margin:0 0 22px;max-width:520px}
-.steps{display:flex;gap:8px;margin:0 0 26px}
-.step{flex:1;text-align:center;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--mut);padding:9px 4px 11px;border-radius:11px;background:#fff;border:1px solid var(--line);position:relative}
-.step b{display:block;font-family:Outfit;font-size:15px;margin-bottom:1px}
-.step.on{color:#fff;background:linear-gradient(135deg,var(--green),var(--green2));border-color:transparent;box-shadow:0 8px 18px rgba(95,185,70,.35)}
-.card{background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.9);border-radius:22px;padding:28px;box-shadow:0 18px 44px rgba(18,44,71,.10),0 2px 6px rgba(18,44,71,.05)}
-label{display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin:18px 0 7px}
-label .opt{color:var(--mut);font-weight:500}
-input[type=text],input[type=email],input[type=tel],select{width:100%;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;font:500 15px 'DM Sans';color:var(--ink);background:#FAFCFE;transition:border-color .15s,box-shadow .15s;appearance:none}
-select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237186A0' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 15px center}
-input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px rgba(95,185,70,.18)}
-input::placeholder{color:#A9B7C9}
+body{margin:0;font-family:'DM Sans',sans-serif;color:var(--ink);background:var(--bg);min-height:100vh}
+.strip{height:4px;background:linear-gradient(90deg,var(--navy) 60%,var(--green) 60%)}
+.topbar{background:var(--navyD)}
+.topbar .in{max-width:640px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;gap:12px}
+.wm .t1{font-family:Outfit;font-weight:800;font-size:16px;letter-spacing:4px;color:#fff;line-height:1}
+.wm .bar{height:2px;background:var(--green);width:60px;margin:4px 0 3px}
+.wm .t2{font-size:6.5px;letter-spacing:1.8px;color:rgba(255,255,255,.5);text-transform:uppercase}
+.topbar .url{margin-left:auto;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.55)}
+.shell{max-width:640px;margin:0 auto;padding:22px 16px 44px}
+.ey{font-size:7px;letter-spacing:2.4px;color:var(--green);font-weight:700}
+h1{font-family:Outfit;font-size:clamp(23px,5vw,29px);font-weight:600;color:var(--navy);margin:3px 0 5px;letter-spacing:-.2px}
+.sub{font-size:13.5px;color:#43566d;line-height:1.55;margin:0 0 18px;max-width:520px}
+.steps{display:flex;border:.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--cloud);margin:0 0 20px}
+.step{flex:1;padding:11px 13px;text-align:left}
+.step+.step{border-left:.5px dashed var(--line)}
+.step b{display:block;font-family:Outfit;font-size:16px;font-weight:700;color:var(--faint);line-height:1}
+.step .lb{font-size:12px;font-weight:600;color:var(--mut);margin-top:3px}
+.step.on{background:#fff}
+.step.on b{color:var(--green)} .step.on .lb{color:var(--navy)}
+.card{background:#fff;border:.5px solid var(--line);border-radius:12px;padding:22px;box-shadow:0 10px 30px rgba(18,44,71,.07)}
+label{display:block;font-size:7.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:var(--green);margin:16px 0 6px}
+label .opt{color:var(--faint);font-weight:600;letter-spacing:.4px}
+input[type=text],input[type=email],input[type=tel],select{width:100%;padding:12px 14px;border:.5px solid var(--line);border-radius:8px;font:500 14.5px 'DM Sans';color:var(--ink);background:var(--cloud);transition:border-color .15s,box-shadow .15s;appearance:none}
+select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B7280' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(95,185,70,.16)}
+input::placeholder{color:var(--faint)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:560px){.row{grid-template-columns:1fr}}
-.pills{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+.pills{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
 @media(max-width:560px){.pills{grid-template-columns:1fr}}
-.pill{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.5px;font-weight:600;color:#43566d;cursor:pointer;background:#FAFCFE;transition:all .15s;user-select:none}
+.pill{display:flex;align-items:center;gap:10px;border:.5px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;font-weight:600;color:#43566d;cursor:pointer;background:var(--cloud);transition:all .15s;user-select:none}
 .pill input{display:none}
-.pill .box{width:20px;height:20px;border-radius:6px;border:2px solid #C7D2E0;flex:0 0 20px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.pill .box{width:19px;height:19px;border-radius:5px;border:2px solid #C7D2E0;flex:0 0 19px;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .pill .box svg{opacity:0;transform:scale(.5);transition:all .15s}
 .pill.sel{border-color:var(--green);background:#F2FAEE;color:var(--navy)}
 .pill.sel .box{background:var(--green);border-color:var(--green)}
 .pill.sel .box svg{opacity:1;transform:scale(1)}
-.drop{margin-top:8px;border:2px dashed #C2CEDD;border-radius:16px;background:#FAFCFE;padding:26px 18px;text-align:center;cursor:pointer;transition:all .18s}
-.drop.over{border-color:var(--green);background:#F2FAEE;transform:scale(1.01)}
-.drop .ic{font-size:26px;line-height:1;margin-bottom:8px}
-.drop .l1{font-size:14.5px;font-weight:700;color:var(--navy)}
+.drop{margin-top:6px;border:1.5px dashed #C2CEDD;border-radius:10px;background:var(--cloud);padding:22px 18px;text-align:center;cursor:pointer;transition:all .18s}
+.drop.over{border-color:var(--green);background:#F2FAEE}
+.drop .ic{font-size:24px;line-height:1;margin-bottom:7px}
+.drop .l1{font-size:13.5px;font-weight:700;color:var(--navy)}
 .drop .l1 span{color:var(--green);text-decoration:underline}
-.drop .l2{font-size:12px;color:var(--mut);margin-top:4px}
-.filechip{display:none;margin-top:8px;align-items:center;gap:12px;background:#F2FAEE;border:1.5px solid var(--green);border-radius:12px;padding:12px 14px}
-.filechip .fic{width:36px;height:36px;border-radius:9px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font:700 11px Outfit;flex:0 0 36px}
-.filechip .fn{font-size:13.5px;font-weight:700;color:var(--navy);word-break:break-all}
-.filechip .fs{font-size:11.5px;color:var(--mut)}
-.filechip .rm{margin-left:auto;border:0;background:transparent;color:var(--mut);font-size:18px;cursor:pointer;padding:4px 8px;width:auto}
-.consent{display:flex;align-items:flex-start;gap:11px;margin:20px 0 0;font-size:13px;line-height:1.5;color:#43566d;cursor:pointer;user-select:none}
-.consent .box{margin-top:1px;width:20px;height:20px;border-radius:6px;border:2px solid #C7D2E0;flex:0 0 20px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.drop .l2{font-family:var(--mono);font-size:10px;color:var(--faint);margin-top:4px}
+.filechip{display:none;margin-top:6px;align-items:center;gap:12px;background:#F2FAEE;border:.5px solid var(--green);border-radius:8px;padding:11px 13px}
+.filechip .fic{width:34px;height:34px;border-radius:7px;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font:700 10px Outfit;flex:0 0 34px}
+.filechip .fn{font-size:13px;font-weight:700;color:var(--navy);word-break:break-all}
+.filechip .fs{font-family:var(--mono);font-size:10.5px;color:var(--mut)}
+.filechip .rm{margin-left:auto;border:0;background:transparent;color:var(--mut);font-size:17px;cursor:pointer;padding:4px 8px;width:auto}
+.consent{display:flex;align-items:flex-start;gap:11px;margin:18px 0 0;font-size:12.5px;line-height:1.45;color:#43566d;cursor:pointer;user-select:none}
+.consent .box{margin-top:1px;width:19px;height:19px;border-radius:5px;border:2px solid #C7D2E0;flex:0 0 19px;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .consent .box svg{opacity:0;transition:all .15s}
 .consent.sel .box{background:var(--green);border-color:var(--green)}
 .consent.sel .box svg{opacity:1}
 .consent input{display:none}
-button.cta{width:100%;margin-top:22px;background:linear-gradient(135deg,var(--green),var(--green2));border:0;color:#fff;font:700 16px 'DM Sans';padding:15px;border-radius:13px;cursor:pointer;box-shadow:0 10px 24px rgba(95,185,70,.38);transition:transform .12s,box-shadow .12s}
-button.cta:hover{transform:translateY(-1px);box-shadow:0 14px 28px rgba(95,185,70,.42)}
-button.cta:disabled{opacity:.55;cursor:default;transform:none;box-shadow:none}
-.err{background:#FCEFEC;border-left:3px solid var(--red);border-radius:0 10px 10px 0;padding:11px 14px;font-size:13px;color:#7a2c22;margin-top:16px;display:none}
-.okpane{display:none;text-align:center;padding:30px 10px}
-.okpane .ring{width:74px;height:74px;border-radius:50%;margin:0 auto 16px;background:linear-gradient(135deg,var(--green),var(--green2));display:flex;align-items:center;justify-content:center;box-shadow:0 14px 30px rgba(95,185,70,.4);animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+button.cta{width:100%;margin-top:20px;background:linear-gradient(100deg,var(--navy) 64%,var(--green2) 64%);border:0;color:#fff;font:700 15px Outfit;padding:14px;border-radius:9px;cursor:pointer;letter-spacing:.3px;transition:filter .12s}
+button.cta:hover{filter:brightness(1.06)}
+button.cta:disabled{opacity:.55;cursor:default}
+.err{background:#FCEFEC;border-left:3px solid var(--red);border-radius:0 8px 8px 0;padding:11px 14px;font-size:12.5px;color:#7a2c22;margin-top:15px;display:none}
+.okpane{display:none;text-align:center;padding:28px 10px}
+.okpane .ring{width:66px;height:66px;border-radius:50%;margin:0 auto 15px;background:var(--green);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 26px rgba(95,185,70,.36);animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
 @keyframes pop{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
-.okpane .big{font-family:Outfit;font-size:22px;font-weight:800;color:var(--navy);margin:0 0 10px}
-.okpane p{font-size:14px;color:#43566d;line-height:1.6;max-width:420px;margin:0 auto}
-.callout{background:#F2FAEE;border-left:3px solid var(--green);border-radius:0 12px 12px 0;padding:13px 16px;font-size:13.5px;line-height:1.6;margin:0 0 12px;color:#33591f}
-.cta2{display:flex;align-items:center;justify-content:center;gap:8px;border:2px solid var(--green);background:#fff;color:#3E8A28;font-weight:700;font-size:15px;padding:13px;border-radius:12px;text-decoration:none;transition:all .15s;margin-bottom:6px}
-.cta2:hover{background:#F2FAEE;transform:translateY(-1px)}
+.okpane .big{font-family:Outfit;font-size:21px;font-weight:700;color:var(--navy);margin:0 0 10px}
+.okpane p{font-size:13.5px;color:#43566d;line-height:1.6;max-width:420px;margin:0 auto}
+.callout{background:var(--cloud);border:.5px solid var(--line);border-left:3px solid var(--green);border-radius:0 9px 9px 0;padding:12px 15px;font-size:13px;line-height:1.6;margin:0 0 12px;color:#33591f}
+.cta2{display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid var(--green);background:#fff;color:var(--green2);font-weight:700;font-size:14px;padding:12px;border-radius:9px;text-decoration:none;transition:all .15s;margin-bottom:4px}
+.cta2:hover{background:#F2FAEE}
 .hp{position:absolute;left:-5000px;top:-5000px}
-.foot{text-align:center;color:var(--mut);font-size:11px;margin-top:22px;letter-spacing:.5px}
-.hint{font-size:12px;color:var(--mut);margin-top:6px}
+.foot{text-align:center;color:var(--faint);font-size:9px;letter-spacing:2px;margin-top:20px;text-transform:uppercase}
+.hint{font-family:var(--mono);font-size:10.5px;color:var(--mut);margin-top:6px}
 </style></head><body>`;
 
-const TOPBAR = `<div class="topbar"><div class="in"><span class="t1">CIMS</span><span class="t2">DG3 Cruise Industry Managed Services</span></div></div>`;
+const bar = url => `<div class="strip"></div><div class="topbar"><div class="in"><div class="wm"><div class="t1">CIMS</div><div class="bar"></div><div class="t2">Shipboard Recruitment</div></div><div class="url">` + url + `</div></div></div>`;
 const CHECKSVG = `<svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5.2 4.4 8.6 11 1.6" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-export const APPLY_HTML = HEAD + TOPBAR + `
+export const APPLY_HTML = HEAD + bar("apply.cims.work") + `
 <div class="shell">
+ <div class="ey">APPLICATION</div>
  <h1>Sail with us.</h1>
- <p class="sub">Apply for a shipboard position in three steps. Your <b>email address is your applicant ID</b> for the whole process — use one you check daily.</p>
+ <p class="sub">Apply for a shipboard position in three steps. Your <b>email is your applicant ID</b> for the whole journey — use one you check daily.</p>
  <div class="steps">
-  <div class="step on"><b>1</b>Apply</div>
-  <div class="step"><b>2</b>Assessment</div>
-  <div class="step"><b>3</b>Interview</div>
+  <div class="step on"><b>1</b><div class="lb">Apply</div></div>
+  <div class="step"><b>2</b><div class="lb">Assessment</div></div>
+  <div class="step"><b>3</b><div class="lb">Interview</div></div>
  </div>
  <div class="card" id="formCard">
   <form id="f" autocomplete="on">
    <label style="margin-top:0">Full name</label><input type="text" id="name" placeholder="Last name, First name" maxlength="120">
    <div class="row">
-    <div><label>Email address</label><input type="email" id="email" placeholder="you@example.com" maxlength="120"></div>
-    <div><label>Phone <span class="opt">(incl. country code)</span></label><input type="tel" id="phone" placeholder="+63 9xx xxx xxxx" maxlength="40"></div>
+    <div><label>Email &#8212; your ID</label><input type="email" id="email" placeholder="you@example.com" maxlength="120"></div>
+    <div><label>Phone <span class="opt">incl. country code</span></label><input type="tel" id="phone" placeholder="+63 9xx xxx xxxx" maxlength="40"></div>
    </div>
    <div class="row">
     <div><label>Position applying for</label><input type="text" id="position" placeholder="e.g. Printer Specialist" maxlength="80"></div>
@@ -107,7 +115,7 @@ export const APPLY_HTML = HEAD + TOPBAR + `
    </div>
    <label>Resume</label>
    <div class="drop" id="drop">
-    <div class="ic">&#128196;</div>
+    <div class="ic">&#128188;</div>
     <div class="l1">Drag &amp; drop your resume here, or <span>browse</span></div>
     <div class="l2">PDF or Word &#183; max 8 MB</div>
    </div>
@@ -118,17 +126,17 @@ export const APPLY_HTML = HEAD + TOPBAR + `
    </div>
    <input type="file" id="file" accept=".pdf,.doc,.docx" style="display:none">
    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off">
-   <label class="consent" id="cWrap"><input type="checkbox" id="consent"><span class="box">` + CHECKSVG + `</span><span>I consent to DG3 CIMS processing my application data for recruitment purposes.</span></label>
+   <label class="consent" id="cWrap" style="text-transform:none;letter-spacing:0;color:#43566d;font-size:12.5px"><input type="checkbox" id="consent"><span class="box">` + CHECKSVG + `</span><span>I consent to DG3 CIMS processing my application data for recruitment purposes.</span></label>
    <div class="err" id="err"></div>
    <button class="cta" id="go" type="submit">Submit application</button>
   </form>
  </div>
  <div class="card okpane" id="done">
-  <div class="ring">` + CHECKSVG.replace('width="12" height="10"', 'width="30" height="25"') + `</div>
+  <div class="ring">` + CHECKSVG.replace('width="12" height="10"', 'width="28" height="23"') + `</div>
   <div class="big">Application received</div>
   <p>Check your email — we just sent you step 2: a short assessment (about 10 minutes). Complete it within <b>7 days</b>, copy the Result ID at the end, and submit it on the verification page linked in the email.</p>
  </div>
- <div class="foot">DG3 CIMS RECRUITMENT</div>
+ <div class="foot">DG3 CIMS Recruitment</div>
 </div>
 <script>
 function tgl(pid,cid){var p=document.getElementById(pid),c=document.getElementById(cid);p.addEventListener('click',function(e){e.preventDefault();c.checked=!c.checked;p.classList.toggle('sel',c.checked);});}
@@ -191,23 +199,24 @@ document.getElementById('f').addEventListener('submit',function(ev){
 });
 </script></body></html>`;
 
-export const VERIFY_HTML = HEAD + TOPBAR + `
+export const VERIFY_HTML = HEAD + bar("verify.cims.work") + `
 <div class="shell">
+ <div class="ey">ASSESSMENT</div>
  <h1>Almost there.</h1>
  <p class="sub">You completed the assessment — now submit your Result ID so we can verify it.</p>
  <div class="steps">
-  <div class="step"><b>1</b>Apply</div>
-  <div class="step on"><b>2</b>Assessment</div>
-  <div class="step"><b>3</b>Interview</div>
+  <div class="step"><b>1</b><div class="lb">Apply</div></div>
+  <div class="step on"><b>2</b><div class="lb">Assessment</div></div>
+  <div class="step"><b>3</b><div class="lb">Interview</div></div>
  </div>
  <div class="card" id="formCard">
   <div class="callout"><b>1.</b> Take the test (button below) &nbsp;&#8594;&nbsp; <b>2.</b> copy the Result ID at the end &nbsp;&#8594;&nbsp; <b>3.</b> come back and submit it with your email.</div>
   <a class="cta2" href="https://bigfive-test.com/test" target="_blank" rel="noopener">Open the Big Five test <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
   <form id="f">
-   <label>Your email address <span class="opt">(the one you applied with)</span></label>
+   <label>Your email address <span class="opt">the one you applied with</span></label>
    <input type="email" id="email" placeholder="you@example.com" maxlength="120">
    <label>Result ID</label>
-   <input type="text" id="rid" placeholder="e.g. 69fafe05540c3865e63a19f6" maxlength="40" style="font-family:ui-monospace,monospace">
+   <input type="text" id="rid" placeholder="e.g. 69fafe05540c3865e63a19f6" maxlength="40" style="font-family:var(--mono)">
    <div class="hint">The long code on your results page next to &quot;Save the following ID&quot;.</div>
    <input class="hp" type="text" id="website" tabindex="-1" autocomplete="off">
    <div class="err" id="err"></div>
@@ -215,11 +224,11 @@ export const VERIFY_HTML = HEAD + TOPBAR + `
   </form>
  </div>
  <div class="card okpane" id="done">
-  <div class="ring">` + CHECKSVG.replace('width="12" height="10"', 'width="30" height="25"') + `</div>
+  <div class="ring">` + CHECKSVG.replace('width="12" height="10"', 'width="28" height="23"') + `</div>
   <div class="big">Result received</div>
   <p>Your assessment has been recorded. You will receive an email shortly with the outcome and, if you advance, the next step of the process.</p>
  </div>
- <div class="foot">DG3 CIMS RECRUITMENT</div>
+ <div class="foot">DG3 CIMS Recruitment</div>
 </div>
 <script>
 document.getElementById('f').addEventListener('submit',function(ev){
