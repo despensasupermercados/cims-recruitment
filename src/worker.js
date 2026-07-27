@@ -681,11 +681,28 @@ async function handleScheduled(env) {
 // wholesale without ever throttling the team, and recruitment.cims.work can go
 // behind Cloudflare Access later without touching applicants.
 //
-// recruitment.cims.work still serves candidate paths as well, so verification
-// links already sitting in candidates' inboxes keep working. Remove that once
-// no pre-split invite can still be in flight (invites expire at 30 days).
+// The split is enforced in BOTH directions, which is the part that is easy to
+// get wrong. Gating only the public host leaves the application endpoints still
+// answering on the staff host, so a rate rule scoped to apply.cims.work is
+// bypassed by aiming the same flood at recruitment.cims.work/api/upload — the
+// R2 bucket fills either way and the WAF never sees it. These three paths are
+// therefore SINGLE-HOMED: the public host is the only place they exist, which
+// is what makes a host-scoped rate rule actually cover the abuse surface.
+//
+// /apply is a front door, not an emailed link — nothing in flight points at it,
+// so it can move immediately. A GET on the staff host redirects rather than
+// 404s, so an old bookmark still lands a candidate in the right place.
+const APPLY_ONLY_PATHS = new Set(["/apply", "/api/apply", "/api/upload"]);
+
+// Dual-homed during the transition ONLY. Test invites sent before the host
+// split point at recruitment.cims.work/verify, and those candidates must not be
+// stranded. Invites expire at 30 days, so on or after 2026-08-27 move these two
+// into APPLY_ONLY_PATHS and the staff host stops serving candidates entirely.
+// Until then the rate rule must cover BOTH hostnames.
+const TRANSITIONAL_PATHS = new Set(["/verify", "/api/verify"]);
+
 const PUBLIC_PATHS = new Set([
-  "/apply", "/verify", "/health", "/api/apply", "/api/upload", "/api/verify",
+  ...APPLY_ONLY_PATHS, ...TRANSITIONAL_PATHS, "/health",
 ]);
 
 // Served when FUNNEL.open is false. Closing applications must never strand a
@@ -707,7 +724,20 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
 
-    if (url.hostname === HOSTS.apply && !PUBLIC_PATHS.has(url.pathname)) {
+    const onApplyHost = url.hostname === HOSTS.apply;
+
+    // Public host: candidate paths only. Everything else — admin, reports,
+    // /decide, /files/ resume downloads — does not exist here.
+    if (onApplyHost && !PUBLIC_PATHS.has(url.pathname)) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    // Staff host: the application front door and its two endpoints do NOT
+    // answer here. Without this the host-scoped rate rule is decorative.
+    if (!onApplyHost && APPLY_ONLY_PATHS.has(url.pathname)) {
+      if (req.method === "GET" && url.pathname === "/apply") {
+        return Response.redirect(APPLY_URL + "/apply" + url.search, 301);
+      }
       return new Response("Not found", { status: 404 });
     }
 
