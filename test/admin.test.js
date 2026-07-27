@@ -18,7 +18,8 @@ test("assign requires an interviewer", () => {
   assert.ok(p.ok);
   assert.equal(p.stage, STAGES.ASSIGNED);
   assert.equal(p.fields.interviewer, "Yanna");
-  assert.deepEqual(p.emails, []);
+  assert.equal(p.emails[0].kind, "firstInterview"); // candidate hears the interview is coming
+
 });
 
 test("outcome: recommend and no branches", () => {
@@ -57,10 +58,11 @@ test("final outcome: hired -> Approved (dateApproved), no -> closed; only from F
   assert.ok(hired.ok);
   assert.equal(hired.stage, STAGES.APPROVED);
   assert.equal(hired.fields.dateApproved, "2026-08-03");
+  assert.equal(hired.emails[0].kind, "hired");        // welcome-aboard email
   const no = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "no", reason: "Not selected" });
   assert.equal(no.stage, STAGES.FINAL_NO);
   assert.equal(no.fields.rejectionReason, "Not selected");
-  assert.equal(no.emails[0].kind, "fail");
+  assert.equal(no.emails[0].kind, "finalRegret");     // dedicated letter, not the generic fail
 });
 
 test("exception decision: approve -> Passed, reject -> Rejected; only from EXCEPTION", () => {

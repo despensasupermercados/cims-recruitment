@@ -21,6 +21,16 @@ database_id = "f0ac8b6a-deac-4214-8f42-e22b202d7d7d"
 binding = "RESUMES"
 bucket_name = "cims-resumes"
 
+# Central mail transport — every email leaves through cims-mailer (mail_log,
+# outbox retries, sender governance). The sender identity
+# "CIMS Recruitment <recruitment@cims.work>" is registered in the mailer's
+# ALLOWED_FROM. Once this binding is verified live, the RESEND_API_KEY secret
+# on THIS worker is dead weight and should be deleted (the mailer holds the
+# only Resend key in the estate).
+[[services]]
+binding = "MAILER"
+service = "cims-mailer"
+
 # Crons (UTC). 01:00 UTC = 09:00 Asia/Manila.
 #  - Monday 01:00 UTC  -> invitation email to both admins (first Monday only; code checks the date)
 #  - Thursday 01:00 UTC -> reminder (Thursday after the first Monday, only if not submitted)
