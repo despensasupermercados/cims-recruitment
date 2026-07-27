@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { STAGES, canAct, planAdminAction, planDecision } from "../src/adminLib.js";
 
 test("canAct gates each action to the right stages", () => {
@@ -18,10 +19,9 @@ test("assign requires an interviewer", () => {
   assert.ok(p.ok);
   assert.equal(p.stage, STAGES.ASSIGNED);
   assert.equal(p.fields.interviewer, "Yanna");
-  // the team is told who now owns the candidate
-  assert.equal(p.emails.length, 1);
-  assert.equal(p.emails[0].kind, "assignNotify");
-  assert.equal(p.emails[0].interviewer, "Yanna");
+  // both audiences are told: the candidate that it is moving, the team who owns it
+  assert.deepEqual(p.emails.map(e => e.kind), ["firstInterview", "assignNotify"]);
+  assert.equal(p.emails[1].interviewer, "Yanna");
 });
 
 test("outcome: recommend and no branches", () => {
@@ -62,23 +62,26 @@ test("final outcome: hired -> Approved (dateApproved), no -> closed; only from F
   assert.equal(hired.fields.dateApproved, "2026-08-03");
   // hiring must both congratulate the candidate AND start crewing — never silently
   const kinds = hired.emails.map(e => e.kind);
-  assert.deepEqual(kinds, ["hiredApplicant", "crewAdminHandoff"]);
+  assert.deepEqual(kinds, ["hired", "crewAdminHandoff"]);
   assert.equal(hired.emails[1].notes, "Strong");
 
   const no = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "no", reason: "Not selected" });
   assert.equal(no.stage, STAGES.FINAL_NO);
   assert.equal(no.fields.rejectionReason, "Not selected");
   // a final-round candidate gets the final-stage letter, not the screening one
-  assert.equal(no.emails[0].kind, "finalRejection");
+  assert.equal(no.emails[0].kind, "finalRegret");
 });
 
 test("every email kind a plan can emit is one the worker knows how to send", () => {
-  // Guards the seam between adminLib (plans) and worker.sendPlanEmails (sends):
-  // a new kind added here without a branch there would silently send nothing.
-  const HANDLED = new Set([
-    "fail", "endorsement", "exception", "finalApplicant", "finalCoordination",
-    "declineNotify", "assignNotify", "hiredApplicant", "finalRejection", "crewAdminHandoff",
-  ]);
+  // Guards the seam between adminLib (plans the email) and worker.sendPlanEmails
+  // (sends it). A kind emitted with no branch there is dropped in silence — the
+  // candidate record moves, the audit line claims an email went out, and nothing
+  // arrives. Read the handled set out of worker.js rather than restating it here:
+  // a hardcoded list drifts from the file it is meant to guard (it did, 27 Jul 26).
+  const src = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
+  const HANDLED = new Set([...src.matchAll(/e\.kind === "(\w+)"/g)].map(m => m[1]));
+  assert.ok(HANDLED.size >= 9, "could not parse the handled kinds out of worker.js");
+
   const plans = [
     planAdminAction("assign", { stage: STAGES.PASSED }, { interviewer: "Yanna" }),
     planAdminAction("reject", { stage: STAGES.PASSED }, { reason: "x" }),
@@ -90,10 +93,16 @@ test("every email kind a plan can emit is one the worker knows how to send", () 
     planDecision("approve", { stage: STAGES.ENDORSED }, { by: "Ray", slotIso: "2026-07-27", slotText: "x" }),
     planDecision("decline", { stage: STAGES.ENDORSED }, { by: "Ray" }),
   ];
+  const emitted = new Set();
   for (const p of plans) {
     for (const e of p.emails || []) {
-      assert.ok(HANDLED.has(e.kind), "unhandled email kind: " + e.kind);
+      emitted.add(e.kind);
+      assert.ok(HANDLED.has(e.kind), "adminLib emits \"" + e.kind + "\" but worker.js has no branch for it");
     }
+  }
+  // And the reverse: a handler nobody emits is dead code that hides a rename.
+  for (const k of HANDLED) {
+    assert.ok(emitted.has(k), "worker.js handles \"" + k + "\" but no plan emits it");
   }
 });
 
@@ -122,4 +131,16 @@ test("decision: approve schedules and clears token; decline notifies; stale toke
   const stale = planDecision("approve", { stage: STAGES.FINAL }, { by: "Rolando" });
   assert.ok(!stale.ok);
   assert.equal(stale.error, "already-processed");
+});
+
+test("every renderer worker.js imports is actually exported by funnelEmails", () => {
+  const src = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
+  const line = src.match(/import \{([^}]+)\} from "\.\/funnelEmails\.js";/);
+  assert.ok(line, "could not find the funnelEmails import in worker.js");
+  const imported = line[1].split(",").map(x => x.trim()).filter(Boolean);
+  const mail = readFileSync(new URL("../src/funnelEmails.js", import.meta.url), "utf8");
+  const exported = new Set([...mail.matchAll(/^export function (\w+)/gm)].map(m => m[1]));
+  for (const fn of imported) {
+    assert.ok(exported.has(fn), "worker.js imports " + fn + " but funnelEmails.js does not export it");
+  }
 });
