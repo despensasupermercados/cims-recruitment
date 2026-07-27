@@ -94,7 +94,7 @@ button.wait{opacity:.7;cursor:default}
 <script>
 var KEY=new URLSearchParams(location.search).get('k')||'';
 document.querySelectorAll('.nav a').forEach(function(a){a.href=a.getAttribute('href').replace('KEYHOLDER',encodeURIComponent(KEY));});
-var REJECT=["Not the best candidate","Not eligible for rehire","Does not meet qualifications","Poor English / communication","Limited technical skill","Attitude","Dishonesty","Age","Salary expectations","Other"];
+var REJECT=["Not the best candidate","Failed Big 5 / psych analysis","Not eligible for rehire","Does not meet qualifications","Communication / technical skills","Attitude","Salary expectations","Age disapproval","Dishonesty","Withdrew / other offer","GM declined exception","Other"];
 var INTERVIEWERS=["Yanna","April"];
 var DATA=[],TL=THRESH();var CUR='action';var FLASH='';
 function THRESH(){return{floor:440,priority:480};}
@@ -102,8 +102,8 @@ var BUCKETS=[
  ['action','Needs action',['Tested — Passed','Interview Assigned','Interviewed — Recommend','Endorsed — Awaiting Approval','Exception Requested']],
  ['scheduled','Scheduled',['Final Scheduled']],
  ['approved','Approved',['Approved']],
- ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Final — Not hired','Tested — Rejected','Auto-Rejected','Expired — No Test']],
- ['testing','In testing',['Applied','Pending Test']],
+ ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Final — Not hired','Tested — Rejected','Expired — No Test']],
+ ['testing','In testing',['Applied']],
 ];
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(function(){t.classList.remove('on');},2200);}
