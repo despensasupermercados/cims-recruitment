@@ -155,21 +155,30 @@ test("every rejection reason the stage machine can emit is a real option", () =>
   // not selected" — neither existed in the base, both restated the stage. They
   // are exercised here rather than grepped for, because what matters is the value
   // that reaches Airtable, not the literal in the file.
+  // Every case here MUST reach ok:true. The second argument to planAdminAction is
+  // the candidate record ({ stage, verdict }), not a bare stage string — the first
+  // draft of this test passed the string, so cur.stage was undefined, canAct
+  // rejected every case, and the loop ran to completion without evaluating one
+  // assertion. It reported green while testing nothing. Hence the count check at
+  // the bottom: a test that can silently stop testing is worse than no test.
   const cases = [
-    ["outcome", "Tested — Passed", { result: "no", today: "2026-07-27" }],
-    ["outcome", "Interview Assigned", { result: "no", today: "2026-07-27" }],
-    ["finalOutcome", "Final Scheduled", { result: "no", today: "2026-07-27" }],
-    ["exceptionDecide", "Exception Requested", { result: "reject", by: "GM" }],
-    ["reject", "Tested — Passed", { reason: "Dishonesty" }],
+    ["outcome", STAGES.ASSIGNED, { result: "no", today: "2026-07-27" }],
+    ["finalOutcome", STAGES.FINAL, { result: "no", today: "2026-07-27" }],
+    ["exceptionDecide", STAGES.EXCEPTION, { result: "reject", by: "GM" }],
+    ["reject", STAGES.PASSED, { reason: "Dishonesty" }],
+    ["reject", STAGES.RECOMMEND, { reason: "Withdrew / other offer" }],
   ];
+  let checked = 0;
   for (const [action, stage, payload] of cases) {
-    const plan = planAdminAction(action, stage, payload);
-    if (!plan.ok) continue; // guarded by canAct — covered in admin.test.js
+    const plan = planAdminAction(action, { stage, verdict: "Passed" }, payload);
+    assert.ok(plan.ok, action + " from " + stage + " was refused: " + plan.error);
+    assert.ok(STAGE_VALUES.includes(plan.stage),
+      action + " from " + stage + " emitted stage " + JSON.stringify(plan.stage) + ", which is not a real option");
     const reason = plan.fields && plan.fields.rejectionReason;
-    if (reason === undefined) continue;
+    assert.ok(reason !== undefined, action + " from " + stage + " set no rejection reason");
     assert.ok(REJECT_REASONS.includes(reason),
       action + " from " + stage + " emitted reason " + JSON.stringify(reason) + ", which is not a real option");
-    assert.ok(STAGE_VALUES.includes(plan.stage),
-      action + " from " + stage + " emitted stage " + JSON.stringify(plan.stage));
+    checked++;
   }
+  assert.equal(checked, cases.length, "some cases were skipped — this test is not testing what it claims");
 });
