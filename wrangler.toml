@@ -2,9 +2,16 @@ name = "cims-recruitment"
 main = "src/worker.js"
 compatibility_date = "2026-07-01"
 
-# Private form at recruitment.cims.work — no login; access via secret link (?k=FORM_KEY).
+# Two front doors on one worker (see src/config.js HOSTS for the split):
+#   recruitment.cims.work — STAFF. Keyed monthly form (?k=FORM_KEY), admin console,
+#                           reports, Ray/Rolando /decide links, /files/ downloads.
+#   apply.cims.work       — PUBLIC. Candidate application + Big Five verification.
+#                           The address that goes on job ads and referral cards.
+# The router in src/worker.js refuses staff paths on the public host, so a WAF
+# rate rule can cover apply.cims.work wholesale without throttling the team.
 routes = [
-  { pattern = "recruitment.cims.work", custom_domain = true }
+  { pattern = "recruitment.cims.work", custom_domain = true },
+  { pattern = "apply.cims.work", custom_domain = true }
 ]
 
 # READ-ONLY access to the CIMS HR console database for Part 2 prefill.
