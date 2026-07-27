@@ -11,7 +11,7 @@ import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS, nextFinalMonday, finalSlotText } from "./funnelLib.js";
 import { planAdminAction, planDecision } from "./adminLib.js";
 import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, findCandidateById, findCandidateByToken, listAllCandidates, listByStage, cf } from "./candidates.js";
-import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderCrewAdminHandoff, renderHiredApplicant, renderAssignmentNotify, renderExpiryNotice, renderFinalRejection } from "./funnelEmails.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderFirstInterview, renderHired, renderFinalRegret } from "./funnelEmails.js";
 import { ADMIN_HTML, REPORTS_HTML } from "./adminPage.js";
 import { CANDIDATES } from "./config.js";
 
@@ -104,8 +104,15 @@ function cleanToFields(clean) {
 // ---------------------------------------------------------------------------
 const isPlaceholder = a => /@example\.com$/i.test(a);
 
+// Mail leaves through cims-mailer (MAILER service binding): one transport for
+// the whole estate — mail_log, outbox retries, sender governance. The direct
+// Resend path below survives ONLY as a fallback for a deploy where the binding
+// is missing; once the binding is verified live, RESEND_API_KEY can be deleted
+// from this worker (the mailer holds the only copy).
+const mailReady = env => !!(env.MAILER || env.RESEND_API_KEY);
+
 function digestConfigured(env) {
-  if (!env.RESEND_API_KEY) return false;
+  if (!mailReady(env)) return false;
   return ![...RECIPIENTS.to, ...RECIPIENTS.cc].some(isPlaceholder);
 }
 
@@ -113,7 +120,29 @@ function adminEmails() {
   return [ADMINS.recruitmentAdmin, ADMINS.crewAdmin].filter(a => a && !isPlaceholder(a));
 }
 
-async function sendEmail(env, { to, cc, subject, html, replyTo }) {
+async function sendEmail(env, { to, cc, subject, html, replyTo, templateId, idempotencyKey }) {
+  if (env.MAILER) {
+    const res = await env.MAILER.fetch("https://mailer/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        app: "recruitment",
+        templateId: templateId || "recruitment.generic.v1",
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+        from: FROM,
+        to,
+        ...(cc && cc.length ? { cc } : {}),
+        ...(replyTo ? { replyTo } : {}),
+        subject,
+        html,
+        critical: true, // recruitment mail is never silently lost — outbox retries
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) throw new Error("mailer: " + (body.error || ("HTTP " + res.status)) + (body.detail ? " — " + body.detail : ""));
+    return body;
+  }
+  // Fallback: direct Resend (pre-binding deploys only).
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -194,7 +223,7 @@ async function handleSubmit(body, env) {
     const c = clean.counts;
     const subject = `CIMS Recruitment Update — ${clean.month}${revised ? " (REVISED)" : ""} · Pipeline ${c.inProcess} · Approved ${c.approved} · Ready ${c.ready}`;
     const html = renderDigest(clean, digest, { revised, consoleUrl: CONSOLE_URL, warnings });
-    await sendEmail(env, { to: RECIPIENTS.to, cc: RECIPIENTS.cc, subject, html });
+    await sendEmail(env, { to: RECIPIENTS.to, cc: RECIPIENTS.cc, subject, html, templateId: "recruitment.digest.v1" });
     emailSkipped = false;
   }
 
@@ -286,10 +315,11 @@ async function handleFile(pathname, env) {
 }
 
 async function sendInvite(env, name, email) {
-  if (!env.RESEND_API_KEY) return;
+  if (!mailReady(env)) return;
   await sendEmail(env, {
     to: [email],
     replyTo: FUNNEL.replyTo,
+    templateId: "recruitment.funnel.test-invite.v1",
     subject: "Your DG3 CIMS application — one step left: the assessment",
     html: renderTestInvite(name, FUNNEL.testUrl, FORM_URL + "/verify"),
   });
@@ -319,10 +349,11 @@ async function handleVerify(body, env) {
   const scores = parseBigFiveHtml(await res.text());
   if (!scores) {
     await updateCandidate(env, rec.id, {}, cf(rec, "audit"), "Result " + resultId + " fetched but scores could not be parsed — needs manual review.");
-    if (env.RESEND_API_KEY) {
+    if (mailReady(env)) {
       const who = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
       if (who.length) await sendEmail(env, {
         to: who,
+        templateId: "recruitment.funnel.parse-fail.v1",
         subject: "Manual review needed — assessment result could not be read",
         html: renderParseFailAlert(cf(rec, "name") || email, email, resultId),
       });
@@ -349,15 +380,16 @@ async function handleVerify(body, env) {
     " → Fit " + fit + " → " + verdictLabel + " (thresholds " + THRESHOLDS.version +
     (failedGuards.length ? "; guards failed: " + failedGuards.join(",") : "") + ").");
 
-  if (env.RESEND_API_KEY) {
+  if (mailReady(env)) {
     if (gate === "reject") {
-      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.fail.v1", subject: "Your DG3 CIMS application — outcome", html: renderFail(name) });
     } else {
-      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
+      await sendEmail(env, { to: [email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.pass.v1", subject: "Congratulations — you are moving to the next stage", html: renderPass(name) });
       const notify = FUNNEL.notify.filter(a => a && !isPlaceholder(a));
       if (notify.length) {
         await sendEmail(env, {
           to: notify,
+          templateId: "recruitment.funnel.screen-notify.v1",
           subject: "Candidate passed screening — " + name + " (Fit " + fit + (gate === "priority" ? ", PRIORITY" : "") + ")",
           html: renderAdminPassNotify({
             name, email, fit, priority: gate === "priority",
@@ -386,7 +418,6 @@ function candView(rec) {
     email: cf(rec, "email") || "",
     phone: cf(rec, "phone") || "",
     position: cf(rec, "position") || "",
-    fleet: cf(rec, "fleet") || "",
     source: cf(rec, "source") || "",
     referrer: cf(rec, "referrer") || "",
     shipboard: !!cf(rec, "shipboard"),
@@ -402,7 +433,6 @@ function candView(rec) {
     dateApplied: cf(rec, "dateApplied") || "",
     dateTested: cf(rec, "dateTested") || "",
     dateEndorsed: cf(rec, "dateEndorsed") || "",
-    dateApproved: cf(rec, "dateApproved") || "",
     dateFinal: cf(rec, "dateFinal") || "",
     scores: { N: cf(rec, "b5N"), E: cf(rec, "b5E"), O: cf(rec, "b5O"), A: cf(rec, "b5A"), C: cf(rec, "b5C") },
     resumeUrl: (cf(rec, "resume") && cf(rec, "resume")[0] && cf(rec, "resume")[0].url) || "",
@@ -419,10 +449,18 @@ const notifyTeam = () => FUNNEL.notify.filter(a => a && !isPlaceholder(a));
 
 // Send the emails a plan/decision requested. `c` = candView, `extra` carries per-kind data.
 async function sendPlanEmails(env, emails, c, extra = {}) {
-  if (!env.RESEND_API_KEY) return;
+  if (!mailReady(env)) return;
   for (const e of emails) {
     if (e.kind === "fail") {
-      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS application — outcome", html: renderFail(c.name) });
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.fail.v1", subject: "Your DG3 CIMS application — outcome", html: renderFail(c.name) });
+    } else if (e.kind === "firstInterview") {
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.first-interview.v1", subject: "Your DG3 CIMS application — your interview is being arranged", html: renderFirstInterview(c.name, c.interviewer) });
+    } else if (e.kind === "hired") {
+      // Idempotency key: the welcome email must never arrive twice, even if the
+      // outcome is recorded twice or a retry races the first send.
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.hired.v1", idempotencyKey: "rec-" + c.id + "-hired", subject: "Welcome aboard — DG3 Cruise Industry Managed Services", html: renderHired(c.name) });
+    } else if (e.kind === "finalRegret") {
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.final-regret.v1", idempotencyKey: "rec-" + c.id + "-final-regret", subject: "Your DG3 CIMS application — outcome", html: renderFinalRegret(c.name) });
     } else if (e.kind === "endorsement") {
       // One email per approver, each carrying their own name in the decide links.
       // NOT cc'd to the team — the Approve/Decline token authorizes the gate and must
@@ -431,29 +469,19 @@ async function sendPlanEmails(env, emails, c, extra = {}) {
         const base = FORM_URL + "/decide?t=" + encodeURIComponent(extra.token) + "&by=" + encodeURIComponent(ap.name);
         await sendEmail(env, {
           to: [ap.email],
+          templateId: "recruitment.funnel.endorsement.v1",
           subject: "Final-interview candidate — " + c.name + " (Fit " + c.fit + (c.priority ? ", PRIORITY" : "") + ")",
           html: renderEndorsement(c, base + "&a=approve", base + "&a=decline", extra.slotText),
         });
       }
     } else if (e.kind === "exception") {
-      await sendEmail(env, { to: [FUNNEL.gmEmail], cc: notifyTeam(), subject: "GM exception requested — " + c.name, html: renderExceptionRequest(c, e.reason, extra.by || "Recruitment") });
+      await sendEmail(env, { to: [FUNNEL.gmEmail], cc: notifyTeam(), templateId: "recruitment.funnel.exception.v1", subject: "GM exception requested — " + c.name, html: renderExceptionRequest(c, e.reason, extra.by || "Recruitment") });
     } else if (e.kind === "finalApplicant") {
-      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS final interview is scheduled", html: renderFinalInviteApplicant(c.name, extra.slotText) });
+      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.final-invite.v1", subject: "Your DG3 CIMS final interview is scheduled", html: renderFinalInviteApplicant(c.name, extra.slotText) });
     } else if (e.kind === "finalCoordination") {
-      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, subject: "Approved — coordinate final interview for " + c.name, html: renderFinalCoordination(c, extra.slotText, e.by) });
+      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.final-coord.v1", subject: "Approved — coordinate final interview for " + c.name, html: renderFinalCoordination(c, extra.slotText, e.by) });
     } else if (e.kind === "declineNotify") {
-      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, subject: "Endorsement declined — " + c.name, html: renderDeclineNotify(c, e.by) });
-    } else if (e.kind === "assignNotify") {
-      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, subject: "First interview assigned — " + c.name + " (" + e.interviewer + ")", html: renderAssignmentNotify(c, e.interviewer) });
-    } else if (e.kind === "hiredApplicant") {
-      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Welcome aboard — your DG3 CIMS application was successful", html: renderHiredApplicant(c.name) });
-    } else if (e.kind === "finalRejection") {
-      await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, subject: "Your DG3 CIMS final interview — our decision", html: renderFinalRejection(c.name) });
-    } else if (e.kind === "crewAdminHandoff") {
-      // The handoff that starts crewing. Team is cc'd so recruitment sees the baton pass.
-      if (ADMINS.crewAdmin && !isPlaceholder(ADMINS.crewAdmin)) {
-        await sendEmail(env, { to: [ADMINS.crewAdmin], cc: notifyTeam(), subject: "Hired — handover to Crew Administration: " + c.name, html: renderCrewAdminHandoff(c, e.notes) });
-      }
+      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.decline-notify.v1", subject: "Endorsement declined — " + c.name, html: renderDeclineNotify(c, e.by) });
     }
   }
 }
@@ -483,9 +511,9 @@ async function handleAdminAction(body, env) {
 
   if (plan.emails && plan.emails.length) {
     const c = candView(rec);
-    // fields just written aren't on the stale rec; patch the view for the email
+    // values just written aren't on the stale rec; patch the view for the email
     if (params.recommendation) c.recommendation = params.recommendation;
-    if (plan.fields && plan.fields.dateApproved) c.dateApproved = plan.fields.dateApproved;
+    if (params.interviewer) c.interviewer = params.interviewer;
     let slotText = "";
     await sendPlanEmails(env, plan.emails, c, { token: params.token, slotText, by: params.by });
   }
@@ -547,23 +575,15 @@ async function funnelDaily(env) {
       const name = cf(rec, "name") || email || "candidate";
       const audit = cf(rec, "audit") || "";
       if (days >= 30) {
-        // Mark first, then send: a failed send never re-opens the record, and the
-        // stage change means this branch cannot fire twice for the same candidate.
         await updateCandidate(env, rec.id, {
           [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
-        }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies). Closure notice sent.");
-        if (env.RESEND_API_KEY && email) {
-          await sendEmail(env, {
-            to: [email], replyTo: FUNNEL.replyTo,
-            subject: "Your DG3 CIMS application has been closed",
-            html: renderExpiryNotice(name),
-          });
-        }
-      } else if (days >= 7 && !audit.includes("7-day reminder sent") && env.RESEND_API_KEY && email) {
+        }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
+      } else if (days >= 7 && !audit.includes("7-day reminder sent") && mailReady(env) && email) {
         // Mark first, then send: a failed send retries tomorrow; a failed mark never double-sends.
         await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
         await sendEmail(env, {
           to: [email], replyTo: FUNNEL.replyTo,
+          templateId: "recruitment.funnel.test-reminder.v1",
           subject: "Reminder — your DG3 CIMS assessment is waiting",
           html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
         });
@@ -578,10 +598,10 @@ async function funnelDaily(env) {
       const audit = cf(rec, "audit") || "";
       if (!when || audit.includes("endorsement nudge sent")) continue;
       const days = (Date.now() - new Date(when + "T00:00:00Z").getTime()) / 86400000;
-      if (days >= FUNNEL.endorseNudgeDays && env.RESEND_API_KEY) {
+      if (days >= FUNNEL.endorseNudgeDays && mailReady(env)) {
         await updateCandidate(env, rec.id, {}, audit, "Endorsement nudge sent (" + Math.floor(days) + " days awaiting authorization).");
         const who = notifyTeam();
-        if (who.length) await sendEmail(env, { to: who, subject: "Endorsement awaiting a response — " + (cf(rec, "name") || ""), html: renderEndorseNudge(candView(rec), Math.floor(days)) });
+        if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.endorse-nudge.v1", subject: "Endorsement awaiting a response — " + (cf(rec, "name") || ""), html: renderEndorseNudge(candView(rec), Math.floor(days)) });
       }
     } catch (e) { console.log("funnelDaily endorsed " + rec.id + ": " + e.message); }
   }
@@ -594,11 +614,12 @@ async function handleScheduled(env) {
   const mnl = manilaNow();
   const month = prevMonthName(mnl);
   const admins = adminEmails();
-  if (!env.RESEND_API_KEY || !admins.length) return;
+  if (!mailReady(env) || !admins.length) return;
 
   if (isFirstMonday(mnl)) {
     await sendEmail(env, {
       to: admins,
+      templateId: "recruitment.form-invite.v1",
       subject: `${month.split(" ")[0]} closed — the Recruitment Update form is open`,
       html: renderInvite(month, keyedFormUrl(env)),
     });
@@ -611,6 +632,7 @@ async function handleScheduled(env) {
     if (!submitted) {
       await sendEmail(env, {
         to: admins,
+        templateId: "recruitment.form-reminder.v1",
         subject: `Reminder — ${month} Recruitment Update not yet submitted`,
         html: renderReminder(month, keyedFormUrl(env)),
       });
@@ -635,6 +657,8 @@ export default {
         hasAirtableToken: !!env.AIRTABLE_TOKEN,
         hasFormKey: !!env.FORM_KEY,
         hasConsoleBinding: !!env.CONSOLE_DB,
+        mailerBound: !!env.MAILER, // true = mail routes through cims-mailer (mail_log + retries)
+
       });
     }
     if (req.method === "GET" && url.pathname === "/api/context") {
