@@ -33,6 +33,15 @@ export const ADMINS = {
 // Sender. Domain must be verified in Resend.
 export const FROM = "CIMS Recruitment <recruitment@cims.work>";
 
+// --- Operational alerting ---------------------------------------------------
+// Where a failed cron reports to. DELIBERATELY NOT SANDBOXED and deliberately
+// outside FUNNEL: an alert that gets redirected with the funnel is an alert that
+// does not arrive, and the failure it reports is invisible by definition. The
+// worst failure mode in this worker is a scheduled job that dies quietly — test
+// reminders, 30-day expiries and endorsement nudges all stop, and the first
+// signal is a candidate asking why nobody ever replied.
+export const OPS_ALERT = "Miguel.Sanmartin@dg3.com";
+
 // --- Hostnames --------------------------------------------------------------
 // Two front doors on one worker, deliberately separated:
 //
@@ -177,6 +186,77 @@ export const FUNNEL = {
   ...FUNNEL_COMMON,
   ...(SANDBOX ? FUNNEL_SANDBOX_VALUES : FUNNEL_PRODUCTION_VALUES),
 };
+
+// --- Closed vocabularies ----------------------------------------------------
+// ============================================================================
+// These three lists are the ONLY values the platform may write into the three
+// singleSelect fields on Candidates. They exist because until 2026-07-27 the
+// Airtable writes in candidates.js sent `typecast: true`, which makes Airtable
+// silently CREATE any option it does not recognise. No error, no log, no signal.
+//
+// What that had already produced:
+//   - the admin console offered "Poor English / communication", "Limited
+//     technical skill", "Attitude", "Age" and "Other" — none of which existed
+//     in the base, so each one materialised as a new option on first use;
+//   - the auto-reject path wrote "Failed Big 5 / psych" while the base held
+//     "Failed Big 5 / psych analysis" — a near-duplicate that splits the
+//     monthly "Top rejection reasons" line into two buckets that never add up;
+//   - six stage values the code writes did not exist in the base at all.
+//
+// A schema that grows by accident cannot be filtered, grouped or rolled up, and
+// the monthly digest reads straight off these fields. So: typecast is off, these
+// lists are the contract, and test/vocabulary.test.js asserts that every value
+// the code can write appears here. Adding a value now means adding it in Airtable
+// FIRST — otherwise the write fails loudly, which is the entire point.
+// ============================================================================
+
+// Where a candidate is in the funnel. Stage answers WHERE they stopped.
+export const STAGE_VALUES = [
+  "Applied",
+  "Tested — Passed",
+  "Tested — Rejected",
+  "Interview Assigned",
+  "Interviewed — Recommend",
+  "Interviewed — Not advancing",
+  "Endorsed — Awaiting Approval",
+  "Exception Requested",
+  "Endorsement Declined",
+  "Final Scheduled",
+  "Approved",
+  "Final — Not hired",
+  "Rejected — Manual",
+  "Expired — No Test",
+];
+
+// The screening outcome. Set by the platform per SOP v1.1, never typed.
+export const VERDICT_VALUES = [
+  "Pending Test",
+  "Passed",
+  "Passed — Priority",
+  "Auto-Rejected",
+  "Expired — No Test",
+  "GM Exception",
+];
+
+// Why a candidate was closed. Reason answers WHY — Stage already answers where,
+// so these must not restate the stage. This list is the single source for the
+// admin console dropdown (adminPage.js mirrors it; a test enforces the match)
+// and for the digest's "Top rejection reasons" line, which is why the wording
+// follows the base and the SOP rather than the console's old ad-hoc labels.
+export const REJECT_REASONS = [
+  "Not the best candidate",
+  "Failed Big 5 / psych analysis",
+  "Not eligible for rehire",
+  "Does not meet qualifications",
+  "Communication / technical skills",
+  "Attitude",
+  "Salary expectations",
+  "Age disapproval",
+  "Dishonesty",
+  "Withdrew / other offer",
+  "GM declined exception",
+  "Other",
+];
 
 // "Candidates" table — system of record for the applicant funnel.
 export const CANDIDATES = {
