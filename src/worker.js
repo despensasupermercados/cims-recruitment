@@ -3,7 +3,7 @@
 // (fixed SELECTs in src/consoleData.js — this worker can never write there).
 
 import { PAGE_HTML, LOCKED_HTML } from "./page.js";
-import { RECIPIENTS, ADMINS, FROM, FORM_URL, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL } from "./config.js";
+import { RECIPIENTS, ADMINS, FROM, FORM_URL, APPLY_URL, HOSTS, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL } from "./config.js";
 import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday } from "./lib.js";
 import { consoleContext } from "./consoleData.js";
 import { renderDigest, renderInvite, renderReminder } from "./emails.js";
@@ -321,7 +321,7 @@ async function sendInvite(env, name, email) {
     replyTo: FUNNEL.replyTo,
     templateId: "recruitment.funnel.test-invite.v1",
     subject: "Your DG3 CIMS application — one step left: the assessment",
-    html: renderTestInvite(name, FUNNEL.testUrl, FORM_URL + "/verify"),
+    html: renderTestInvite(name, FUNNEL.testUrl, APPLY_URL + "/verify"),
   });
 }
 
@@ -449,6 +449,16 @@ async function handleAdminList(env) {
 
 const notifyTeam = () => FUNNEL.notify.filter(a => a && !isPlaceholder(a));
 
+// Crew Administration handover address. Resolves from FUNNEL first so that every
+// address the applicant funnel can reach lives inside the one sandbox block in
+// config.js. ADMINS.crewAdmin is the production monthly-form owner and is never
+// sandboxed; reading it directly here meant a single Hired click in a sandbox
+// mailed the real Crew Admin at DG3 (found 2026-07-27, before it fired).
+const crewAdminAddress = () => {
+  const a = FUNNEL.crewAdmin || ADMINS.crewAdmin;
+  return a && !isPlaceholder(a) ? a : "";
+};
+
 // Send the emails a plan/decision requested. `c` = candView, `extra` carries per-kind data.
 async function sendPlanEmails(env, emails, c, extra = {}) {
   if (!mailReady(env)) return;
@@ -487,8 +497,9 @@ async function sendPlanEmails(env, emails, c, extra = {}) {
     } else if (e.kind === "crewAdminHandoff") {
       // Recruitment ends here and crew administration begins. Idempotent: the
       // handover sheet must not arrive twice if the outcome is recorded twice.
-      if (ADMINS.crewAdmin && !isPlaceholder(ADMINS.crewAdmin)) {
-        await sendEmail(env, { to: [ADMINS.crewAdmin], cc: notifyTeam(), templateId: "recruitment.funnel.crew-handoff.v1", idempotencyKey: "rec-" + c.id + "-crew-handoff", subject: "Hired — handover to Crew Administration: " + c.name, html: renderCrewAdminHandoff(c, e.notes) });
+      const crewTo = crewAdminAddress();
+      if (crewTo) {
+        await sendEmail(env, { to: [crewTo], cc: notifyTeam(), templateId: "recruitment.funnel.crew-handoff.v1", idempotencyKey: "rec-" + c.id + "-crew-handoff", subject: "Hired — handover to Crew Administration: " + c.name, html: renderCrewAdminHandoff(c, e.notes) });
       }
     } else if (e.kind === "declineNotify") {
       const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.decline-notify.v1", subject: "Endorsement declined — " + c.name, html: renderDeclineNotify(c, e.by) });
@@ -606,7 +617,7 @@ async function funnelDaily(env) {
           to: [email], replyTo: FUNNEL.replyTo,
           templateId: "recruitment.funnel.test-reminder.v1",
           subject: "Reminder — your DG3 CIMS assessment is waiting",
-          html: renderTestReminder(name, FUNNEL.testUrl, FORM_URL + "/verify"),
+          html: renderTestReminder(name, FUNNEL.testUrl, APPLY_URL + "/verify"),
         });
       }
     } catch (e) { console.log("funnelDaily pending " + rec.id + ": " + e.message); }
@@ -662,9 +673,43 @@ async function handleScheduled(env) {
 }
 
 // ---------------------------------------------------------------------------
+// Host gate. apply.cims.work is the public candidate door and serves candidate
+// paths ONLY. Everything else — the keyed monthly form, the admin console, the
+// reports view, Ray/Rolando's /decide token links and /files/ resume downloads
+// (candidate PII) — returns 404 there. That keeps the internet-facing hostname
+// free of any staff surface, so a WAF rate rule can cover apply.cims.work
+// wholesale without ever throttling the team, and recruitment.cims.work can go
+// behind Cloudflare Access later without touching applicants.
+//
+// recruitment.cims.work still serves candidate paths as well, so verification
+// links already sitting in candidates' inboxes keep working. Remove that once
+// no pre-split invite can still be in flight (invites expire at 30 days).
+const PUBLIC_PATHS = new Set([
+  "/apply", "/verify", "/health", "/api/apply", "/api/upload", "/api/verify",
+]);
+
+// Served when FUNNEL.open is false. Closing applications must never strand a
+// candidate who already has an invite: /verify and /api/verify stay open so
+// anyone mid-funnel can still submit their result ID. Only the front door shuts.
+const CLOSED_HTML = `<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Applications closed — DG3 CIMS</title>
+<style>body{margin:0;background:#F4F6F8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1B2A3A}
+.w{max-width:520px;margin:12vh auto;padding:32px;background:#fff;border:1px solid #E1E7ED;border-radius:10px}
+h1{font-size:19px;margin:0 0 14px}p{font-size:14px;line-height:1.6;color:#4A5A6A;margin:0 0 12px}</style>
+<div class="w"><h1>We are not accepting applications right now</h1>
+<p>Thank you for your interest in joining the DG3 CIMS shipboard print team. This
+application is closed at the moment and we are not able to accept new submissions.</p>
+<p>Please check back again soon. If you have already applied and are looking to
+submit your assessment result, your emailed verification link still works.</p></div>`;
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+
+    if (url.hostname === HOSTS.apply && !PUBLIC_PATHS.has(url.pathname)) {
+      return new Response("Not found", { status: 404 });
+    }
 
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
       return new Response(keyOk(env, url.searchParams.get("k")) ? PAGE_HTML : LOCKED_HTML,
@@ -689,12 +734,14 @@ export default {
     }
     // --- applicant funnel (public — no key; staff surfaces stay keyed) ---
     if (req.method === "GET" && url.pathname === "/apply") {
+      if (!FUNNEL.open) return new Response(CLOSED_HTML, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
       return new Response(APPLY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
     if (req.method === "GET" && url.pathname === "/verify") {
       return new Response(VERIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
     if (req.method === "POST" && url.pathname === "/api/upload") {
+      if (!FUNNEL.open) return json({ ok: false, errors: ["We are not accepting new applications at the moment."] }, 503);
       try { return await handleUpload(req, env); }
       catch (e) { console.log("upload: " + e.message); return json({ ok: false, errors: ["Upload failed — please try again."] }, 500); }
     }
@@ -728,6 +775,9 @@ export default {
       catch (e) { return json({ ok: false, errors: ["Server error: " + e.message] }, 500); }
     }
     if (req.method === "POST" && (url.pathname === "/api/apply" || url.pathname === "/api/verify")) {
+      // /api/verify stays open when the funnel is closed — a candidate already
+      // holding an invite must still be able to submit their result ID.
+      if (url.pathname === "/api/apply" && !FUNNEL.open) return json({ ok: false, errors: ["We are not accepting new applications at the moment."] }, 503);
       let body;
       try { body = await req.json(); } catch { return json({ ok: false, errors: ["Invalid request body."] }, 400); }
       try {
