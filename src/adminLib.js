@@ -2,8 +2,18 @@
 // Covered by test/admin.test.js. The handlers in worker.js execute what this plans;
 // keeping the transition rules here means they are tested, not buried in I/O code.
 
+// The stage vocabulary, by name. Every module that writes a Stage value imports
+// from here rather than typing the string — worker.js and candidates.js included.
+// The reason is not tidiness: Airtable's typecast used to turn any mistyped stage
+// into a brand-new schema option, silently, so a literal in a rarely-hit branch
+// could corrupt the base months before anyone read a rollup. A constant cannot be
+// mistyped without throwing at import. config.js STAGE_VALUES is the closed list
+// these must all appear in; test/vocabulary.test.js enforces that.
 export const STAGES = {
+  APPLIED: "Applied",
   PASSED: "Tested — Passed",
+  TESTED_REJECTED: "Tested — Rejected",
+  EXPIRED: "Expired — No Test",
   ASSIGNED: "Interview Assigned",
   RECOMMEND: "Interviewed — Recommend",
   NOT_ADVANCING: "Interviewed — Not advancing",
@@ -62,7 +72,12 @@ export function planAdminAction(action, cur, params = {}) {
         audit: "First interview: RECOMMEND." + (notes ? " Notes recorded." : ""), emails: [] };
     }
     if (P.result === "no") {
-      return { ok: true, stage: STAGES.NOT_ADVANCING, fields: { interviewNotes: notes, dateInterviewed: P.today, rejectionReason: P.reason || "Interview — not advancing" },
+      // Fallback must be a real Rejection Reason option. "Interview — not
+      // advancing" was not one: it restated the Stage instead of giving a reason,
+      // and typecast created it in the base on first use. Stage already records
+      // WHERE the candidate stopped; Reason records WHY, so an unspecified reason
+      // is "Other" — not a second copy of the stage name.
+      return { ok: true, stage: STAGES.NOT_ADVANCING, fields: { interviewNotes: notes, dateInterviewed: P.today, rejectionReason: P.reason || "Other" },
         audit: "First interview: NOT ADVANCING." + (notes ? " Notes recorded." : ""), emails: [] };
     }
     return { ok: false, error: "Outcome must be recommend or no." };
@@ -123,7 +138,9 @@ export function planAdminAction(action, cur, params = {}) {
         ] };
     }
     if (P.result === "no") {
-      return { ok: true, stage: STAGES.FINAL_NO, fields: { interviewNotes: notes, rejectionReason: P.reason || "Final interview — not selected" },
+      // Same rule as the first-interview fallback above: a real option, not a
+      // restatement of the stage. "Final interview — not selected" was neither.
+      return { ok: true, stage: STAGES.FINAL_NO, fields: { interviewNotes: notes, rejectionReason: P.reason || "Other" },
         audit: "Final interview: NOT HIRED." + (notes ? " Notes recorded." : ""), emails: [{ kind: "finalRegret", to: "applicant" }] };
     }
     return { ok: false, error: "Final outcome must be hired or no." };
