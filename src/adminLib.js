@@ -45,8 +45,8 @@ export function planAdminAction(action, cur, params = {}) {
     const who = String(P.interviewer || "").trim();
     if (!who) return { ok: false, error: "Choose an interviewer." };
     return { ok: true, stage: STAGES.ASSIGNED, fields: { interviewer: who },
-      audit: "First interview assigned to " + who + ". Candidate notified.",
-      emails: [{ kind: "firstInterview", to: "applicant" }] };
+      audit: "First interview assigned to " + who + ".",
+      emails: [{ kind: "assignNotify", to: "team", interviewer: who }] };
   }
 
   if (action === "outcome") {
@@ -111,14 +111,15 @@ export function planAdminAction(action, cur, params = {}) {
     const notes = String(P.notes || "").trim();
     if (P.result === "hired") {
       return { ok: true, stage: STAGES.APPROVED, fields: { dateApproved: P.today, interviewNotes: notes },
-        audit: "Final interview: HIRED. Approved — entering visa & medicals. Welcome email sent." + (notes ? " Notes recorded." : ""),
-        emails: [{ kind: "hired", to: "applicant" }] };
+        audit: "Final interview: HIRED. Approved — entering visa & medicals. Crew Administration notified." + (notes ? " Notes recorded." : ""),
+        emails: [
+          { kind: "hiredApplicant", to: "applicant" },
+          { kind: "crewAdminHandoff", to: "crewAdmin", notes },
+        ] };
     }
     if (P.result === "no") {
-      // A candidate who reached the final interview earned more than the generic
-      // rejection letter — finalRegret acknowledges how far they got.
       return { ok: true, stage: STAGES.FINAL_NO, fields: { interviewNotes: notes, rejectionReason: P.reason || "Final interview — not selected" },
-        audit: "Final interview: NOT HIRED. Regrets letter sent." + (notes ? " Notes recorded." : ""), emails: [{ kind: "finalRegret", to: "applicant" }] };
+        audit: "Final interview: NOT HIRED." + (notes ? " Notes recorded." : ""), emails: [{ kind: "finalRejection", to: "applicant" }] };
     }
     return { ok: false, error: "Final outcome must be hired or no." };
   }

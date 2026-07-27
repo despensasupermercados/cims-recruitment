@@ -18,8 +18,10 @@ test("assign requires an interviewer", () => {
   assert.ok(p.ok);
   assert.equal(p.stage, STAGES.ASSIGNED);
   assert.equal(p.fields.interviewer, "Yanna");
-  assert.equal(p.emails[0].kind, "firstInterview"); // candidate hears the interview is coming
-
+  // the team is told who now owns the candidate
+  assert.equal(p.emails.length, 1);
+  assert.equal(p.emails[0].kind, "assignNotify");
+  assert.equal(p.emails[0].interviewer, "Yanna");
 });
 
 test("outcome: recommend and no branches", () => {
@@ -54,15 +56,45 @@ test("exception only for gate-rejected candidates", () => {
 
 test("final outcome: hired -> Approved (dateApproved), no -> closed; only from FINAL", () => {
   assert.ok(!planAdminAction("finalOutcome", { stage: STAGES.ENDORSED }, { result: "hired" }).ok); // wrong stage
-  const hired = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "hired", today: "2026-08-03" });
+  const hired = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "hired", today: "2026-08-03", notes: "Strong" });
   assert.ok(hired.ok);
   assert.equal(hired.stage, STAGES.APPROVED);
   assert.equal(hired.fields.dateApproved, "2026-08-03");
-  assert.equal(hired.emails[0].kind, "hired");        // welcome-aboard email
+  // hiring must both congratulate the candidate AND start crewing — never silently
+  const kinds = hired.emails.map(e => e.kind);
+  assert.deepEqual(kinds, ["hiredApplicant", "crewAdminHandoff"]);
+  assert.equal(hired.emails[1].notes, "Strong");
+
   const no = planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "no", reason: "Not selected" });
   assert.equal(no.stage, STAGES.FINAL_NO);
   assert.equal(no.fields.rejectionReason, "Not selected");
-  assert.equal(no.emails[0].kind, "finalRegret");     // dedicated letter, not the generic fail
+  // a final-round candidate gets the final-stage letter, not the screening one
+  assert.equal(no.emails[0].kind, "finalRejection");
+});
+
+test("every email kind a plan can emit is one the worker knows how to send", () => {
+  // Guards the seam between adminLib (plans) and worker.sendPlanEmails (sends):
+  // a new kind added here without a branch there would silently send nothing.
+  const HANDLED = new Set([
+    "fail", "endorsement", "exception", "finalApplicant", "finalCoordination",
+    "declineNotify", "assignNotify", "hiredApplicant", "finalRejection", "crewAdminHandoff",
+  ]);
+  const plans = [
+    planAdminAction("assign", { stage: STAGES.PASSED }, { interviewer: "Yanna" }),
+    planAdminAction("reject", { stage: STAGES.PASSED }, { reason: "x" }),
+    planAdminAction("endorse", { stage: STAGES.RECOMMEND }, { recommendation: "x" }),
+    planAdminAction("exception", { stage: STAGES.NOT_ADVANCING, verdict: "Auto-Rejected" }, { reason: "x" }),
+    planAdminAction("exceptionDecide", { stage: STAGES.EXCEPTION }, { result: "reject" }),
+    planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "hired" }),
+    planAdminAction("finalOutcome", { stage: STAGES.FINAL }, { result: "no" }),
+    planDecision("approve", { stage: STAGES.ENDORSED }, { by: "Ray", slotIso: "2026-07-27", slotText: "x" }),
+    planDecision("decline", { stage: STAGES.ENDORSED }, { by: "Ray" }),
+  ];
+  for (const p of plans) {
+    for (const e of p.emails || []) {
+      assert.ok(HANDLED.has(e.kind), "unhandled email kind: " + e.kind);
+    }
+  }
 });
 
 test("exception decision: approve -> Passed, reject -> Rejected; only from EXCEPTION", () => {
