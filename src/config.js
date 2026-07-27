@@ -106,45 +106,76 @@ export const FLEETS = ["RCL", "CEL", "AZ", "NCL"];
 
 // --- Applicant funnel -------------------------------------------------------
 // Funnel notifications go to the two interviewers directly (per Miguel, 2026-07-23).
-// ============================================================================
-// >>> SANDBOX ACTIVE (2026-07-23 acceptance test) — team + approver emails are
-// redirected to Miguel's own inboxes so NO real team member is emailed.
 //
-// EVERY address the funnel can reach lives in THIS block. That is the point of
-// it: going live is one contiguous edit, not a hunt across the file. Before
-// 2026-07-27 the hired-handoff email resolved to ADMINS.crewAdmin instead, which
-// is shared with the production monthly-form flow and is NOT sandboxed — so a
-// single Hired click would have mailed the real Crew Admin. Do not reintroduce
-// a funnel address outside this block.
-//
-// TO REVERT after the test, restore these PRODUCTION values:
-//   open:           true  (leave true — production accepts applications)
-//   notify:         ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"]
-//   replyTo:        "recruitment@tdgcm.ph"
-//   crewAdmin:      "maryjoy.manzanares@dg3.com"
-//   finalApprovers: Ray -> "Ray.Guerra@dg3.com" , Rolando -> "Rolando.Abellan@dg3.com"
-//   gmEmail:        "Miguel.Sanmartin@dg3.com"
 // ============================================================================
-export const FUNNEL = {
-  // Master switch for the public application page. false => /apply and the
-  // public POST endpoints return a courteous "not currently accepting
-  // applications" response instead of creating a candidate record. Set this to
-  // true only when a real human is watching the base daily.
+// GOING LIVE IS ONE CHARACTER: set SANDBOX to false.
+//
+// The previous shape parked the production addresses in a comment block for a
+// human to retype at go-live. That makes a HALF-REVERT both easy and silent —
+// restore crewAdmin, forget notify, and the funnel runs live against real
+// candidates while Yanna is never told anyone applied. Nothing would error and
+// no test would fail. So the two states are now both real objects, only one of
+// which is ever in force, and test/hosts.test.js asserts BOTH directions:
+//   SANDBOX true  -> no funnel address may end @dg3.com or @tdgcm.ph, and the
+//                    public door must be shut (open === false)
+//   SANDBOX false -> every address must deep-equal FUNNEL_PRODUCTION
+//
+// The dangerous combination is redirected addresses with the door open: real
+// people applying into a pipeline nobody is watching. That state is now
+// unreachable — open travels with the address set, not separately.
+//
+// EVERY address the funnel can reach lives in these two objects. Before
+// 2026-07-27 the hired-handoff email resolved to ADMINS.crewAdmin instead,
+// which is shared with the production monthly-form flow and is never
+// sandboxed — a single Hired click would have mailed the real Crew Admin.
+// Do not reintroduce a funnel address anywhere else.
+// ============================================================================
+export const SANDBOX = true;
+
+// Production. `open: true` because production means accepting applications —
+// but only turn SANDBOX off when a named human is watching the base daily.
+// An open door with nobody behind it is worse than a closed one.
+const FUNNEL_PRODUCTION_VALUES = {
+  open: true,
+  notify: ["yanna.valdueza@tdgcm.ph", "april.jiloca@tdgcm.ph"],
+  replyTo: "recruitment@tdgcm.ph",
+  crewAdmin: "maryjoy.manzanares@dg3.com",
+  finalApprovers: [
+    { name: "Ray", email: "Ray.Guerra@dg3.com" },
+    { name: "Rolando", email: "Rolando.Abellan@dg3.com" },
+  ],
+  gmEmail: "Miguel.Sanmartin@dg3.com", // GM exception authority (SOP v1.1 §11)
+};
+
+// Sandbox (2026-07-23 acceptance test). Every address is one of Miguel's own
+// inboxes, so NO real team member can be emailed by the funnel.
+const FUNNEL_SANDBOX_VALUES = {
   open: false,
-  notify: ["sanmartin@iyassu.com"],                        // SANDBOX (prod: yanna+april @tdgcm.ph)
-  replyTo: "sanmartin@me.com",                             // SANDBOX (prod: recruitment@tdgcm.ph)
-  crewAdmin: "sanmartin@sudespensa.cl",                    // SANDBOX (prod: maryjoy.manzanares@dg3.com)
+  notify: ["sanmartin@iyassu.com"],
+  replyTo: "sanmartin@me.com",
+  crewAdmin: "sanmartin@sudespensa.cl",
+  finalApprovers: [
+    { name: "Ray", email: "sanmartin@sudespensa.cl" },
+    { name: "Rolando", email: "sanmartin@sudespensa.cl" },
+  ],
+  gmEmail: "sanmartin@iyassu.com",
+};
+
+// Identical in both states — nothing here can reach a person.
+const FUNNEL_COMMON = {
   testUrl: "https://bigfive-test.com/test",
   resultUrl: "https://bigfive-test.com/result/", // + result ID (server-side fetch)
   cooldownDays: 365, // rejected applicants may re-apply after 12 months (SOP v1.1 §10)
-  // Final-interview approvers. EITHER one's Approve click authorizes arranging the
-  // interview (Miguel: they always work together). The hiring decision stays the live interview.
-  finalApprovers: [
-    { name: "Ray", email: "sanmartin@sudespensa.cl" },     // SANDBOX (prod: Ray.Guerra@dg3.com)
-    { name: "Rolando", email: "sanmartin@sudespensa.cl" }, // SANDBOX (prod: Rolando.Abellan@dg3.com)
-  ],
-  gmEmail: "sanmartin@iyassu.com", // SANDBOX (prod: Miguel.Sanmartin@dg3.com) — GM exception authority
   endorseNudgeDays: 5, // days of silence after endorsement before nudging the endorser
+};
+
+// Exported so the guard test can assert the production set is intact while the
+// sandbox is active, and that it is actually IN USE once the sandbox is off.
+export const FUNNEL_PRODUCTION = FUNNEL_PRODUCTION_VALUES;
+
+export const FUNNEL = {
+  ...FUNNEL_COMMON,
+  ...(SANDBOX ? FUNNEL_SANDBOX_VALUES : FUNNEL_PRODUCTION_VALUES),
 };
 
 // "Candidates" table — system of record for the applicant funnel.
