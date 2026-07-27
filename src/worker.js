@@ -11,7 +11,7 @@ import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS, nextFinalMonday, finalSlotText } from "./funnelLib.js";
 import { planAdminAction, planDecision } from "./adminLib.js";
 import { findCandidateByEmail, findCandidateByResultId, createCandidate, updateCandidate, listPendingTests, findCandidateById, findCandidateByToken, listAllCandidates, listByStage, cf } from "./candidates.js";
-import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderFirstInterview, renderHired, renderFinalRegret } from "./funnelEmails.js";
+import { renderTestInvite, renderTestReminder, renderPass, renderFail, renderAdminPassNotify, renderParseFailAlert, renderEndorsement, renderFinalInviteApplicant, renderFinalCoordination, renderDeclineNotify, renderEndorseNudge, renderExceptionRequest, renderFirstInterview, renderHired, renderFinalRegret, renderAssignmentNotify, renderCrewAdminHandoff, renderExpiryNotice } from "./funnelEmails.js";
 import { ADMIN_HTML, REPORTS_HTML } from "./adminPage.js";
 import { CANDIDATES } from "./config.js";
 
@@ -433,6 +433,8 @@ function candView(rec) {
     dateApplied: cf(rec, "dateApplied") || "",
     dateTested: cf(rec, "dateTested") || "",
     dateEndorsed: cf(rec, "dateEndorsed") || "",
+    dateApproved: cf(rec, "dateApproved") || "",
+    fleet: cf(rec, "fleet") || "",
     dateFinal: cf(rec, "dateFinal") || "",
     scores: { N: cf(rec, "b5N"), E: cf(rec, "b5E"), O: cf(rec, "b5O"), A: cf(rec, "b5A"), C: cf(rec, "b5C") },
     resumeUrl: (cf(rec, "resume") && cf(rec, "resume")[0] && cf(rec, "resume")[0].url) || "",
@@ -480,6 +482,14 @@ async function sendPlanEmails(env, emails, c, extra = {}) {
       await sendEmail(env, { to: [c.email], replyTo: FUNNEL.replyTo, templateId: "recruitment.funnel.final-invite.v1", subject: "Your DG3 CIMS final interview is scheduled", html: renderFinalInviteApplicant(c.name, extra.slotText) });
     } else if (e.kind === "finalCoordination") {
       const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.final-coord.v1", subject: "Approved — coordinate final interview for " + c.name, html: renderFinalCoordination(c, extra.slotText, e.by) });
+    } else if (e.kind === "assignNotify") {
+      const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.assign-notify.v1", subject: "First interview assigned — " + c.name + " (" + e.interviewer + ")", html: renderAssignmentNotify(c, e.interviewer) });
+    } else if (e.kind === "crewAdminHandoff") {
+      // Recruitment ends here and crew administration begins. Idempotent: the
+      // handover sheet must not arrive twice if the outcome is recorded twice.
+      if (ADMINS.crewAdmin && !isPlaceholder(ADMINS.crewAdmin)) {
+        await sendEmail(env, { to: [ADMINS.crewAdmin], cc: notifyTeam(), templateId: "recruitment.funnel.crew-handoff.v1", idempotencyKey: "rec-" + c.id + "-crew-handoff", subject: "Hired — handover to Crew Administration: " + c.name, html: renderCrewAdminHandoff(c, e.notes) });
+      }
     } else if (e.kind === "declineNotify") {
       const who = notifyTeam(); if (who.length) await sendEmail(env, { to: who, templateId: "recruitment.funnel.decline-notify.v1", subject: "Endorsement declined — " + c.name, html: renderDeclineNotify(c, e.by) });
     }
@@ -514,6 +524,7 @@ async function handleAdminAction(body, env) {
     // values just written aren't on the stale rec; patch the view for the email
     if (params.recommendation) c.recommendation = params.recommendation;
     if (params.interviewer) c.interviewer = params.interviewer;
+    if (plan.fields && plan.fields.dateApproved) c.dateApproved = plan.fields.dateApproved;
     let slotText = "";
     await sendPlanEmails(env, plan.emails, c, { token: params.token, slotText, by: params.by });
   }
@@ -577,7 +588,17 @@ async function funnelDaily(env) {
       if (days >= 30) {
         await updateCandidate(env, rec.id, {
           [CF.verdict]: "Expired — No Test", [CF.stage]: "Expired — No Test",
-        }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies).");
+        }, audit, "No assessment after 30 days — application auto-closed (no cooldown applies). Closure notice sent.");
+        // Closing a file silently is how a candidate ends up chasing us months later.
+        if (mailReady(env) && email) {
+          await sendEmail(env, {
+            to: [email], replyTo: FUNNEL.replyTo,
+            templateId: "recruitment.funnel.expiry.v1",
+            idempotencyKey: "rec-" + rec.id + "-expiry",
+            subject: "Your DG3 CIMS application has been closed",
+            html: renderExpiryNotice(name),
+          });
+        }
       } else if (days >= 7 && !audit.includes("7-day reminder sent") && mailReady(env) && email) {
         // Mark first, then send: a failed send retries tomorrow; a failed mark never double-sends.
         await updateCandidate(env, rec.id, {}, audit, "7-day reminder sent.");
