@@ -476,6 +476,14 @@ function candView(rec) {
     scores: { N: cf(rec, "b5N"), E: cf(rec, "b5E"), O: cf(rec, "b5O"), A: cf(rec, "b5A"), C: cf(rec, "b5C") },
     resumeUrl: (cf(rec, "resume") && cf(rec, "resume")[0] && cf(rec, "resume")[0].url) || "",
     rejectionReason: cf(rec, "rejectionReason") || "",
+    // Post-hire. The console cannot show what it is not sent, and a stage badge
+    // with no status underneath it ("Visa processing" and nothing else) tells
+    // the person reading it less than the spreadsheet it is meant to replace.
+    visaStatus: cf(rec, "visaStatus") || "",
+    medicalStatus: cf(rec, "medicalStatus") || "",
+    dateReady: cf(rec, "dateReady") || "",
+    expectedJoin: cf(rec, "expectedJoin") || "",
+    dateDeployed: cf(rec, "dateDeployed") || "",
   };
 }
 
@@ -561,9 +569,21 @@ async function handleAdminAction(body, env) {
     interviewer: CF.interviewer, interviewNotes: CF.interviewNotes, dateInterviewed: CF.dateInterviewed,
     rejectionReason: CF.rejectionReason, recommendation: CF.recommendation,
     actionToken: CF.actionToken, dateEndorsed: CF.dateEndorsed, dateApproved: CF.dateApproved,
+    // Post-hire. Without these five the stage would advance and the data behind
+    // the monthly counts would never be written — the button would look like it
+    // worked and the numbers would stay hand-typed.
+    visaStatus: CF.visaStatus, medicalStatus: CF.medicalStatus,
+    dateReady: CF.dateReady, expectedJoin: CF.expectedJoin, dateDeployed: CF.dateDeployed,
   };
   const fields = { [CF.stage]: plan.stage };
-  for (const [k, v] of Object.entries(plan.fields || {})) if (fieldMap[k]) fields[fieldMap[k]] = v;
+  for (const [k, v] of Object.entries(plan.fields || {})) {
+    // This loop used to be `if (fieldMap[k])` — a field the stage machine planned
+    // but the map did not know was dropped silently, stage advanced, value lost.
+    // That is the same shape of failure as typecast: a write that succeeds and
+    // is wrong. Refuse instead, and say which key is unmapped.
+    if (!fieldMap[k]) return json({ ok: false, errors: ["Internal: no Airtable field mapped for '" + k + "'."] }, 500);
+    fields[fieldMap[k]] = v;
+  }
 
   await updateCandidate(env, rec.id, fields, cf(rec, "audit"), plan.audit);
 
