@@ -49,8 +49,8 @@ button:disabled{opacity:.5;cursor:default}
 .panel{margin-top:11px;border-top:.5px solid var(--line);padding-top:11px;display:none}
 .panel.on{display:block}
 label{display:block;font-size:7.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;color:var(--green);margin:10px 0 5px}
-select,textarea{width:100%;border:.5px solid var(--line);border-radius:9px;padding:10px 12px;font:500 13px 'DM Sans';color:var(--ink);background:var(--cloud);transition:border-color .15s,box-shadow .15s}
-select:focus,textarea:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(95,185,70,.16)}
+select,textarea,input[type=date]{width:100%;border:.5px solid var(--line);border-radius:9px;padding:10px 12px;font:500 13px 'DM Sans';color:var(--ink);background:var(--cloud);transition:border-color .15s,box-shadow .15s}
+select:focus,textarea:focus,input[type=date]:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(95,185,70,.16)}
 textarea{min-height:62px;resize:vertical}
 .det{margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--mut);line-height:1.7;white-space:pre-wrap;background:var(--cloud);border-radius:9px;padding:11px 13px;display:none;max-height:220px;overflow:auto}
 .det.on{display:block}
@@ -98,13 +98,28 @@ var REJECT=["Not the best candidate","Failed Big 5 / psych analysis","Not eligib
 var INTERVIEWERS=["Yanna","April"];
 var DATA=[],TL=THRESH();var CUR='action';var FLASH='';
 function THRESH(){return{floor:440,priority:480};}
+// The tabs are the monthly report. Each post-hire tab count IS the headline
+// number it is named after — approved, in visa, in medicals, ready to deploy,
+// joined — so the figure on the form and the figure on this screen cannot
+// disagree. That is the whole point of the four post-hire buttons: those five
+// numbers used to be typed in by hand from a spreadsheet nobody else could see.
 var BUCKETS=[
  ['action','Needs action',['Tested — Passed','Interview Assigned','Interviewed — Recommend','Endorsed — Awaiting Approval','Exception Requested']],
  ['scheduled','Scheduled',['Final Scheduled']],
  ['approved','Approved',['Approved']],
- ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Final — Not hired','Tested — Rejected','Expired — No Test']],
+ ['visa','In visa',['Visa processing']],
+ ['medicals','In medicals',['Medicals']],
+ ['ready','Ready to deploy',['Ready for deployment']],
+ ['deployed','Deployed',['Deployed']],
+ ['closed','Closed',['Interviewed — Not advancing','Rejected — Manual','Endorsement Declined','Final — Not hired','Tested — Rejected','Expired — No Test','Withdrawn']],
  ['testing','In testing',['Applied']],
 ];
+// Medical statuses that mean "still in progress". Fit and Not recommended are
+// deliberately absent: those are outcomes with their own buttons, and offering
+// them here would let someone close a candidate through a status dropdown
+// without the stage ever moving. Mirrors config.js MEDICAL_STATUS_VALUES; a
+// test enforces the subset.
+var MEDSTATUS=["Not started","Ongoing","For appointment","For consultation"];
 function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(function(){t.classList.remove('on');},2200);}
 function load(){
@@ -136,6 +151,7 @@ function band(c){
 // stage -> { step (completed nodes 1..6), tone, closed, text(c) }
 function meta(c){
  var s=c.stage,iv=c.interviewer||'the interviewer',df=c.dateFinal||'',rr=c.rejectionReason||'';
+ var vs=esc(c.visaStatus||''),ms=esc(c.medicalStatus||''),ej=esc(c.expectedJoin||''),dd=esc(c.dateDeployed||'');
  var M={
   'Applied':[1,'wait',0,'Awaiting assessment'],
   'Pending Test':[1,'wait',0,'Awaiting assessment'],
@@ -144,7 +160,12 @@ function meta(c){
   'Interviewed — Recommend':[3,'act',0,'Recommended — endorse to Ray & Rolando'],
   'Endorsed — Awaiting Approval':[4,'wait',0,'Endorsed — awaiting Ray or Rolando to approve'],
   'Final Scheduled':[4,'act',0,'Final interview scheduled'+(df?' — '+df:'')+' — record the outcome after it happens'],
-  'Approved':[6,'good',0,'Hired — approved, in visa & medicals'],
+  'Approved':[6,'act',0,'Hired &amp; approved — start visa processing'],
+  'Visa processing':[7,'act',0,'In visa processing'+(vs?' — '+vs:'')],
+  'Medicals':[8,'act',0,'In medicals'+(ms?' — '+ms:'')],
+  'Ready for deployment':[8,'good',0,'Cleared — ready to deploy'+(ej?', expected join '+ej:'')],
+  'Deployed':[9,'good',0,'Joined'+(dd?' '+dd:'')],
+  'Withdrawn':[6,'closed',1,'Closed — withdrawn after approval'+(vs==='Denied'?' (visa denied)':(ms==='Not recommended'?' (medically not recommended)':''))],
   'Final — Not hired':[5,'closed',1,'Closed — not hired at the final interview'],
   'Interviewed — Not advancing':[3,'closed',1,'Closed — not advancing after interview'],
   'Rejected — Manual':[2,'closed',1,'Closed — rejected'+(rr?' ('+rr+')':'')],
@@ -157,10 +178,13 @@ function meta(c){
  var m=M[s]||[1,'wait',0,esc(s)];
  return {step:m[0],tone:m[1],closed:m[2],text:m[3]};
 }
-var STEPS=['Apply','Test','Interview','Endorse','Final','Hired'];
+var STEPS=['Apply','Test','Interview','Endorse','Final','Hired','Visa','Medical','Joined'];
 function stepper(m){
  var h='<div class="stepper">';
- for(var i=1;i<=6;i++){
+ // Driven off STEPS.length, not a literal 6. The loop bound was hardcoded, so
+ // adding the three post-hire nodes to STEPS would have rendered a six-step
+ // bar with three labels missing and no error anywhere.
+ for(var i=1;i<=STEPS.length;i++){
   var cls='';
   if(i<=m.step){cls=(m.closed&&i===m.step)?'closed':'done';}
   else if(i===m.step+1&&!m.closed){cls='cur';}
@@ -211,6 +235,11 @@ function actions(c){
  if(s==='Exception Requested'){a+='<button class="bn" onclick="pExc(\\''+c.id+'\\')">Record GM decision</button>';}
  if(s==='Tested — Passed'||s==='Interview Assigned'||s==='Interviewed — Recommend'){a+='<button class="br" onclick="pReject(\\''+c.id+'\\')">Reject</button>';}
  if(c.verdict==='Auto-Rejected'&&s!=='Exception Requested'){a+='<button class="bo" onclick="pException(\\''+c.id+'\\')">Request GM exception</button>';}
+ // Post-hire: the four buttons that carry a candidate from Approved to Joined.
+ if(s==='Approved'){a+='<button class="bn" onclick="doAct(this,\\''+c.id+'\\',\\'startVisa\\',{},\\'Visa processing started\\')">Start visa processing</button>';}
+ if(s==='Visa processing'){a+='<button class="bg" onclick="pVisa(\\''+c.id+'\\')">Record visa outcome</button>';}
+ if(s==='Medicals'){a+='<button class="bg" onclick="pMed(\\''+c.id+'\\')">Record medical outcome</button>';}
+ if(s==='Ready for deployment'){a+='<button class="bg" onclick="pJoin(\\''+c.id+'\\')">Mark joined</button>';}
  return a;
 }
 function tg(id){document.getElementById(id).classList.toggle('on');}
@@ -225,6 +254,12 @@ function pException(id){panel(id,'<label>Justification for GM exception</label><
 function pFinal(id){panel(id,'<label>Final interview outcome</label><textarea id="n_'+id+'" placeholder="How did the final interview go? (optional)"></textarea><div class="tiny">Record the result of the live interview with Ray &amp; Rolando.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'finalOutcome\\',{result:\\'hired\\',notes:v(\\'n_'+id+'\\')},\\'Hired — approved, entering visa &amp; medicals\\')">Hired &#10003;</button><button class="br" onclick="pFinalNo(\\''+id+'\\')">Not hired</button></div>');}
 function pFinalNo(id){panel(id,'<label>Reason not hired</label><select id="r_'+id+'">'+opts(REJECT)+'</select><label>Notes</label><textarea id="n_'+id+'"></textarea><div class="acts"><button class="br" onclick="doAct(this,\\''+id+'\\',\\'finalOutcome\\',{result:\\'no\\',reason:v(\\'r_'+id+'\\'),notes:v(\\'n_'+id+'\\')},\\'Recorded — not hired, moved to Closed\\')">Confirm — not hired</button></div>');}
 function pExc(id){panel(id,'<div class="tiny">Record the GM\\'s written decision on this exception request.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'exceptionDecide\\',{result:\\'approve\\'},\\'GM approved — candidate rejoins the interview flow\\')">GM approved</button><button class="br" onclick="doAct(this,\\''+id+'\\',\\'exceptionDecide\\',{result:\\'reject\\'},\\'GM declined — moved to Closed\\')">GM declined</button></div>');}
+// --- Post-hire panels ------------------------------------------------------
+function today(){return new Date().toISOString().slice(0,10);}
+function pVisa(id){panel(id,'<div class="tiny">Delayed keeps the candidate in visa processing on purpose — they really are still in visa, so the count should still say so.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'visaOutcome\\',{result:\\'approved\\'},\\'Visa approved — medicals started\\')">Visa approved</button><button class="bo" onclick="doAct(this,\\''+id+'\\',\\'visaOutcome\\',{result:\\'delayed\\'},\\'Marked delayed — still in visa\\')">Delayed</button><button class="br" onclick="doAct(this,\\''+id+'\\',\\'visaOutcome\\',{result:\\'denied\\'},\\'Visa denied — withdrawn\\')">Denied</button></div>');}
+function pMed(id){panel(id,'<label>Expected join date</label><input type="date" id="j_'+id+'"><div class="tiny">Required before anyone can be marked ready to deploy: it is the only input behind the 60&#8211;90 day joiner forecast.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'medicalOutcome\\',{result:\\'fit\\',expectedJoin:v(\\'j_'+id+'\\')},\\'Medically fit — ready to deploy\\')">Medically fit</button><button class="bo" onclick="pMedWait(\\''+id+'\\')">Still in progress</button><button class="br" onclick="doAct(this,\\''+id+'\\',\\'medicalOutcome\\',{result:\\'unfit\\'},\\'Not recommended — withdrawn\\')">Not recommended</button></div>');}
+function pMedWait(id){panel(id,'<label>Medical status</label><select id="ms_'+id+'">'+opts(MEDSTATUS)+'</select><div class="tiny">Keeps the candidate in medicals and records where they actually are.</div><div class="acts"><button class="bn" onclick="doAct(this,\\''+id+'\\',\\'medicalOutcome\\',{result:\\'pending\\',status:v(\\'ms_'+id+'\\')},\\'Medical status updated\\')">Update status</button></div>');}
+function pJoin(id){panel(id,'<label>Date joined</label><input type="date" id="dj_'+id+'" value="'+today()+'"><div class="tiny">The actual join date, written to its own field. The forecast in Expected Join Date is left untouched so it can still be scored against reality.</div><div class="acts"><button class="bg" onclick="doAct(this,\\''+id+'\\',\\'deploy\\',{date:v(\\'dj_'+id+'\\')},\\'Marked joined\\')">Confirm joined</button></div>');}
 function v(id){return (document.getElementById(id)||{}).value||'';}
 function doAct(btn,id,action,params,msg){
  if(btn){btn.dataset.t=btn.innerHTML;btn.innerHTML='Saving&#8230;';btn.classList.add('wait');btn.disabled=true;}

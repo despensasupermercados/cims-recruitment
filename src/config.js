@@ -226,6 +226,46 @@ export const STAGE_VALUES = [
   "Final — Not hired",
   "Rejected — Manual",
   "Expired — No Test",
+  // --- Post-hire. Recruitment ends at Approved; deployment does not. ---------
+  // Before 2026-07-27 the funnel's terminal stage was "Approved": it fired the
+  // crew-handoff email and stopped. Everything after it — in visa, in medicals,
+  // ready to deploy, forecast joiners, joined this month — was hand-counted into
+  // the monthly form, which is why the Candidates table's own description
+  // ("every monthly metric derives from this table — never hand-count") was not
+  // true of five headline numbers.
+  //
+  // These four already existed as options in the base, unused, left over from
+  // the hand-run pipeline. Nothing in the code ever wrote them. Now it does.
+  "Visa processing",
+  "Medicals",
+  "Ready for deployment",
+  "Deployed",
+  // A hired candidate who never sails: visa denied, medically unfit, or they
+  // took another offer. Needed so a stuck candidate LEAVES "in visa" instead of
+  // inflating it forever — a count that can only go up is not a count.
+  "Withdrawn",
+];
+
+// Post-hire status. Both fields already existed in the base with exactly these
+// choices; the code simply never wrote them. Stage says which room a candidate
+// is in, Status says what is happening inside it — so "Visa processing" +
+// "Delayed / rescheduled" is a visible problem instead of a silent one, and the
+// monthly "in visa" number can be explained without asking anybody.
+export const VISA_STATUS_VALUES = [
+  "Not started",
+  "In process",
+  "Approved",
+  "Delayed / rescheduled",
+  "Denied",
+];
+
+export const MEDICAL_STATUS_VALUES = [
+  "Not started",
+  "Ongoing",
+  "Fit",
+  "For appointment",
+  "For consultation",
+  "Not recommended",
 ];
 
 // The screening outcome. Set by the platform per SOP v1.1, never typed.
@@ -299,5 +339,17 @@ export const CANDIDATES = {
     actionToken: "fldRBfehOivooCLha",
     interviewNotes: "fldwrkshmbzbQICUJ",
     recommendation: "fldlaBTwtwHCTYw70",
+    // Post-hire. The first four existed in the base from day one and no line of
+    // code ever wrote them, which is precisely why the numbers that depend on
+    // them were typed by hand every month.
+    visaStatus:    "fld7sT8ph0MRj0ng0",
+    medicalStatus: "fldwCqNhmsj5GhcPr",
+    dateReady:     "fldsCR3DsuXJLeL8u", // cleared medicals, awaiting a join date
+    expectedJoin:  "fldPJqv94cu7YKaxj", // FORECAST — set at Ready for deployment
+    dateDeployed:  "fldQ7f1IXALly1P9X", // ACTUAL — set on Deploy. Added 2026-07-27.
+    // dateDeployed is deliberately a separate field from expectedJoin. Writing
+    // the real join date over the forecast would make "joined this month" right
+    // and forecast accuracy unmeasurable — and a forecast nobody scores is a
+    // guess with a number next to it.
   },
 };
