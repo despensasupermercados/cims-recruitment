@@ -101,6 +101,84 @@ export function renderFail(name) {
   return shell(inner, FOOT_APPLICANT, CTX_APPLICANT);
 }
 
+/** To the applicant — an interviewer has been assigned; the interview is being arranged. */
+export function renderFirstInterview(name, interviewer) {
+  const who = interviewer ? `<b style="color:${NAVY};">${esc(interviewer)}</b> from our recruitment team` : "Our recruitment team";
+  const inner = `<div style="padding:22px 24px 24px;">
+    ${title("Your interview is being arranged")}
+    ${para(`Dear ${esc(first(name))},`)}
+    ${para(`Good news — your application is moving forward. ${who} will contact you at this email address and the phone number on your application to schedule your first interview.`)}
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:${NAVY};border-radius:12px;overflow:hidden;margin-top:16px;">
+      <tr><td colspan="3" style="background:${GREEN};padding:7px 18px;font-size:9.5px;font-weight:700;letter-spacing:1.6px;color:#ffffff;">NEXT STAGE &mdash; FIRST INTERVIEW</td></tr>
+      <tr>
+        <td width="40%" style="padding:16px 18px;">
+          <div style="font-size:8px;letter-spacing:1.6px;color:${GREEN};font-weight:700;">COMPLETED</div>
+          <div style="font-family:${FONT_H};font-size:17px;font-weight:700;color:#ffffff;margin-top:4px;">Assessment</div>
+        </td>
+        <td align="center" style="color:rgba(255,255,255,.5);font-size:15px;">&#9992;</td>
+        <td width="40%" align="right" style="padding:16px 18px;">
+          <div style="font-size:8px;letter-spacing:1.6px;color:${GREEN};font-weight:700;">SCHEDULING</div>
+          <div style="font-family:${FONT_H};font-size:17px;font-weight:700;color:#ffffff;margin-top:4px;">Interview</div>
+        </td>
+      </tr>
+    </table>
+    ${para("The interview is a conversation about your experience and the role — no preparation materials are required. Please keep an eye on this inbox and your phone over the coming days.")}
+    ${finePrint("If your contact details have changed since you applied, reply to this email with the update.")}
+  </div>`;
+  return shell(inner, FOOT_APPLICANT, CTX_APPLICANT);
+}
+
+/** To the applicant — hired after the final interview. The biggest moment in the
+ *  funnel gets the full boarding-pass treatment. */
+export function renderHired(name) {
+  const NEXT = [
+    ["1", "Documentation", "our crew administration team contacts you with the list of documents to prepare"],
+    ["2", "Medicals &amp; visa", "we guide you through the medical examination and visa process step by step"],
+    ["3", "Deployment", "once cleared, your vessel assignment and travel itinerary arrive by email"],
+  ];
+  const inner = `<div style="padding:22px 24px 24px;">
+    ${title("Welcome aboard")}
+    ${para(`Dear ${esc(first(name))},`)}
+    ${para(`<b style="color:${NAVY};">Congratulations!</b> Following your final interview, we are delighted to confirm that you have been selected to join the DG3 Cruise Industry Managed Services program.`)}
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:${NAVY};border-radius:12px;overflow:hidden;margin-top:16px;">
+      <tr><td colspan="3" style="background:${GREEN};padding:7px 18px;font-size:9.5px;font-weight:700;letter-spacing:1.6px;color:#ffffff;">WELCOME ABOARD &mdash; DG3 CIMS</td></tr>
+      <tr>
+        <td width="40%" style="padding:16px 18px;">
+          <div style="font-size:8px;letter-spacing:1.6px;color:${GREEN};font-weight:700;">STATUS</div>
+          <div style="font-family:${FONT_H};font-size:17px;font-weight:700;color:#ffffff;margin-top:4px;">Selected</div>
+        </td>
+        <td align="center" style="color:rgba(255,255,255,.5);font-size:15px;">&#9992;</td>
+        <td width="40%" align="right" style="padding:16px 18px;">
+          <div style="font-size:8px;letter-spacing:1.6px;color:${GREEN};font-weight:700;">NEXT</div>
+          <div style="font-family:${FONT_H};font-size:17px;font-weight:700;color:#ffffff;margin-top:4px;">Onboarding</div>
+        </td>
+      </tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid ${BORDER};border-radius:12px;overflow:hidden;margin-top:14px;">
+      <tr><td style="padding:12px 18px 0;">${chip("WHAT HAPPENS NEXT", NAVY)}</td></tr>
+      <tr><td style="padding:4px 18px 14px;">${stepsBox(NEXT)}</td></tr>
+    </table>
+    ${para("No action is needed from you today — the first contact comes from us. If any of your contact details change, reply to this email so nothing is delayed.")}
+    ${para("We are glad to have you with us.")}
+  </div>`;
+  return shell(inner, FOOT_APPLICANT, CTX_APPLICANT);
+}
+
+/** To the applicant — not selected after the final interview. Deliberately a
+ *  letter, no ticket: same dignity rule as renderFail, but it acknowledges how
+ *  far the candidate got. 12-month window per SOP v1.1 §10. */
+export function renderFinalRegret(name) {
+  const inner = `<div style="padding:22px 24px 24px;">
+    ${title("Thank you — the outcome of your final interview")}
+    ${para(`Dear ${esc(first(name))},`)}
+    ${para("Thank you for the time and effort you invested in the DG3 CIMS recruitment process — you completed every stage, including the final interview with our management team, and that is an achievement in itself.")}
+    ${para("After careful consideration, we have decided not to move forward with your application at this time. This was a close decision among strong candidates, and it is not a judgment on your ability to succeed in this industry.")}
+    ${para(`You are welcome to apply again after <b style="color:${NAVY};">12 months</b> — candidates who reached this stage are exactly the ones we hope to see again.`)}
+    ${para("We wish you every success in your career.")}
+  </div>`;
+  return shell(inner, FOOT_APPLICANT, CTX_APPLICANT);
+}
+
 const factRow = (label, value) => `<tr>
   <td style="padding:5px 12px 5px 0;font-size:9px;font-weight:700;color:${GREEN_INK};letter-spacing:2px;text-transform:uppercase;white-space:nowrap;">${label}</td>
   <td style="padding:5px 0;font-size:12.5px;color:${BODY};">${value}</td></tr>`;
