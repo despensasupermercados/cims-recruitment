@@ -49,6 +49,9 @@ const ARGS = {
   renderAssignmentNotify: [C, "Yanna"],
   renderExpiryNotice: ["Ana Rivera"],
   renderExceptionRequest: [C, "Verified 10 years shipboard with two fleets.", "Yanna"],
+  // Ops alert. Given a known cron so the "what did not run" line resolves, and a
+  // stack, so the optional trace block is exercised too.
+  renderCronFailure: ["0 2 * * *", "Airtable 429: rate limited", "Error: Airtable 429\n    at funnelDaily (worker.js:640:11)"],
 };
 
 test("every exported renderer is covered by this file", () => {
