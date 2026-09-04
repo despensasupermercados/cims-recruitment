@@ -749,14 +749,20 @@ async function handleScheduled(env) {
 // /apply is a front door, not an emailed link — nothing in flight points at it,
 // so it can move immediately. A GET on the staff host redirects rather than
 // 404s, so an old bookmark still lands a candidate in the right place.
-const APPLY_ONLY_PATHS = new Set(["/apply", "/api/apply", "/api/upload"]);
+//
+// /verify and /api/verify joined this set on 2026-09-04: they were dual-homed
+// only so that test invites emailed before the host split (which pointed at
+// recruitment.cims.work/verify) could still be used. Invites expire at 30 days
+// and that window closed 2026-08-27, so the staff host no longer serves any
+// candidate path and the rate rule on the public host now covers the whole
+// funnel. A stale GET /verify on the staff host redirects (below), it never 404s.
+const APPLY_ONLY_PATHS = new Set(["/apply", "/api/apply", "/api/upload", "/verify", "/api/verify"]);
 
-// Dual-homed during the transition ONLY. Test invites sent before the host
-// split point at recruitment.cims.work/verify, and those candidates must not be
-// stranded. Invites expire at 30 days, so on or after 2026-08-27 move these two
-// into APPLY_ONLY_PATHS and the staff host stops serving candidates entirely.
-// Until then the rate rule must cover BOTH hostnames.
-const TRANSITIONAL_PATHS = new Set(["/verify", "/api/verify"]);
+// Dual-homed paths for a DATED transition only — empty since 2026-09-04. Kept as
+// a named, empty set so the router shape (and its test) stays stable: put a path
+// here only with a written end date, and move it into APPLY_ONLY_PATHS on that
+// date. Anything left here past its date is a hole that outlives its reason.
+const TRANSITIONAL_PATHS = new Set([]);
 
 const PUBLIC_PATHS = new Set([
   ...APPLY_ONLY_PATHS, ...TRANSITIONAL_PATHS, "/health",
@@ -794,6 +800,11 @@ export default {
     if (!onApplyHost && APPLY_ONLY_PATHS.has(url.pathname)) {
       if (req.method === "GET" && url.pathname === "/apply") {
         return Response.redirect(APPLY_URL + "/apply" + url.search, 301);
+      }
+      // A pre-split emailed verification link (expired by now, but a candidate may
+      // still click it): send them to the same path on the public host.
+      if (req.method === "GET" && url.pathname === "/verify") {
+        return Response.redirect(APPLY_URL + "/verify" + url.search, 301);
       }
       return new Response("Not found", { status: 404 });
     }
