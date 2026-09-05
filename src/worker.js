@@ -742,8 +742,8 @@ async function handleScheduled(env) {
 // get wrong. Gating only the public host leaves the application endpoints still
 // answering on the staff host, so a rate rule scoped to apply.cims.work is
 // bypassed by aiming the same flood at recruitment.cims.work/api/upload — the
-// R2 bucket fills either way and the WAF never sees it. These three paths are
-// therefore SINGLE-HOMED: the public host is the only place they exist, which
+// R2 bucket fills either way and the WAF never sees it. These candidate paths
+// are therefore SINGLE-HOMED: the public host is the only place they exist, which
 // is what makes a host-scoped rate rule actually cover the abuse surface.
 //
 // /apply is a front door, not an emailed link — nothing in flight points at it,
@@ -795,18 +795,21 @@ export default {
       return new Response("Not found", { status: 404 });
     }
 
-    // Staff host: the application front door and its two endpoints do NOT
-    // answer here. Without this the host-scoped rate rule is decorative.
+    // Staff host: no candidate path answers here. Without this the host-scoped
+    // rate rule is decorative. One rule for all of them, so the next path that
+    // moves needs no new branch:
+    //   - a GET on a PAGE path (a bookmarked /apply, a pre-split emailed /verify)
+    //     redirects to the same path on the public host, never dead-ends;
+    //   - an API call (a tab opened before the split, still posting relative
+    //     /api/verify here) gets a JSON 410 the page can show, not a text 404 it
+    //     renders as "Network error".
     if (!onApplyHost && APPLY_ONLY_PATHS.has(url.pathname)) {
-      if (req.method === "GET" && url.pathname === "/apply") {
-        return Response.redirect(APPLY_URL + "/apply" + url.search, 301);
+      if (req.method === "GET" && !url.pathname.startsWith("/api/")) {
+        return Response.redirect(APPLY_URL + url.pathname + url.search, 301);
       }
-      // A pre-split emailed verification link (expired by now, but a candidate may
-      // still click it): send them to the same path on the public host.
-      if (req.method === "GET" && url.pathname === "/verify") {
-        return Response.redirect(APPLY_URL + "/verify" + url.search, 301);
-      }
-      return new Response("Not found", { status: 404 });
+      const moved = APPLY_URL + url.pathname.replace(/^\/api/, "");
+      return new Response(JSON.stringify({ ok: false, errors: ["This page has moved to " + moved + " — please reopen it there."] }),
+        { status: 410, headers: { "Content-Type": "application/json; charset=utf-8" } });
     }
 
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {

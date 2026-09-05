@@ -75,11 +75,17 @@ test("the application endpoints are single-homed so a host-scoped rate rule work
   // And the router must actually reject them off the public host.
   assert.match(SRC, /!onApplyHost && APPLY_ONLY_PATHS\.has\(url\.pathname\)/,
     "the staff-host rejection is missing — the application endpoints still answer on " + HOSTS.staff);
-  // A bookmarked /apply, or a stale emailed /verify, on the staff host redirects rather than dead-ends.
-  assert.match(SRC, /Response\.redirect\(APPLY_URL \+ "\/apply"/,
-    "GET /apply on the staff host should redirect to the public host, not 404");
-  assert.match(SRC, /Response\.redirect\(APPLY_URL \+ "\/verify"/,
-    "GET /verify on the staff host should redirect to the public host, not 404");
+  // A bookmarked /apply, or a stale emailed /verify, on the staff host redirects rather than
+  // dead-ends — and the redirect must sit INSIDE the staff-host gate, not merely exist somewhere.
+  const gate = SRC.slice(SRC.indexOf("if (!onApplyHost && APPLY_ONLY_PATHS.has(url.pathname)) {"));
+  const gateBody = gate.slice(0, gate.indexOf("\n    }\n"));
+  assert.match(gateBody, /req\.method === "GET" && !url\.pathname\.startsWith\("\/api\/"\)/,
+    "GET on a candidate PAGE path on the staff host must redirect");
+  assert.match(gateBody, /Response\.redirect\(APPLY_URL \+ url\.pathname \+ url\.search, 301\)/,
+    "the redirect must target the same path on the public host");
+  // An API call on the staff host (a tab opened before the split) gets a JSON 410 the page can show.
+  assert.match(gateBody, /status: 410/, "staff-host /api/* must answer 410 JSON, not a text 404 the page shows as 'Network error'");
+  assert.match(gateBody, /application\/json/);
   // The transition is closed. Anything parked in TRANSITIONAL_PATHS is a hole
   // that has outlived the reason it was opened — a new one needs a written end date.
   assert.deepEqual([...pathSet("TRANSITIONAL_PATHS")], [],
