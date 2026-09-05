@@ -66,19 +66,30 @@ test("the application endpoints are single-homed so a host-scoped rate rule work
   // staff host, the rule is bypassed by changing one word in the request and
   // the R2 bucket fills anyway. These must exist on the public host ONLY.
   const applyOnly = pathSet("APPLY_ONLY_PATHS");
-  for (const p of ["/apply", "/api/apply", "/api/upload"]) {
+  // Since 2026-09-04 this includes the verification pair: the 30-day window for
+  // pre-split emailed links closed 2026-08-27, so the staff host serves NO
+  // candidate path and the public-host rate rule covers the entire funnel.
+  for (const p of ["/apply", "/api/apply", "/api/upload", "/verify", "/api/verify"]) {
     assert.ok(applyOnly.has(p), p + " must be single-homed — a rate rule on " + HOSTS.apply + " cannot cover it otherwise");
   }
   // And the router must actually reject them off the public host.
   assert.match(SRC, /!onApplyHost && APPLY_ONLY_PATHS\.has\(url\.pathname\)/,
     "the staff-host rejection is missing — the application endpoints still answer on " + HOSTS.staff);
-  // A bookmarked /apply on the staff host redirects rather than dead-ends.
-  assert.match(SRC, /Response\.redirect\(APPLY_URL \+ "\/apply"/,
-    "GET /apply on the staff host should redirect to the public host, not 404");
-  // Transitional paths are the emailed ones, and only those. Anything else
-  // parked here is a hole that will outlive the reason it was opened.
-  assert.deepEqual([...pathSet("TRANSITIONAL_PATHS")].sort(), ["/api/verify", "/verify"],
-    "only the emailed verification links may stay dual-homed");
+  // A bookmarked /apply, or a stale emailed /verify, on the staff host redirects rather than
+  // dead-ends — and the redirect must sit INSIDE the staff-host gate, not merely exist somewhere.
+  const gate = SRC.slice(SRC.indexOf("if (!onApplyHost && APPLY_ONLY_PATHS.has(url.pathname)) {"));
+  const gateBody = gate.slice(0, gate.indexOf("\n    }\n"));
+  assert.match(gateBody, /req\.method === "GET" && !url\.pathname\.startsWith\("\/api\/"\)/,
+    "GET on a candidate PAGE path on the staff host must redirect");
+  assert.match(gateBody, /Response\.redirect\(APPLY_URL \+ url\.pathname \+ url\.search, 301\)/,
+    "the redirect must target the same path on the public host");
+  // An API call on the staff host (a tab opened before the split) gets a JSON 410 the page can show.
+  assert.match(gateBody, /status: 410/, "staff-host /api/* must answer 410 JSON, not a text 404 the page shows as 'Network error'");
+  assert.match(gateBody, /application\/json/);
+  // The transition is closed. Anything parked in TRANSITIONAL_PATHS is a hole
+  // that has outlived the reason it was opened — a new one needs a written end date.
+  assert.deepEqual([...pathSet("TRANSITIONAL_PATHS")], [],
+    "TRANSITIONAL_PATHS must stay empty unless a new, dated transition is opened");
 });
 
 test("candidate links point at the apply host, staff links at the staff host", () => {

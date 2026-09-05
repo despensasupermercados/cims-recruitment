@@ -59,9 +59,9 @@ export const FORM_URL = "https://recruitment.cims.work";
 export const APPLY_URL = "https://apply.cims.work";
 
 // Host classification for the router. A request arriving on the public host is
-// allowed to reach candidate paths only; everything else 404s there.
-// During transition the staff host still serves candidate paths too, so links
-// already in flight (test invites, verification emails) keep working.
+// allowed to reach candidate paths only; everything else 404s there. The staff
+// host serves NO candidate path (transition closed 2026-09-04): a GET on a
+// candidate page there 301s to APPLY_URL, an API call there gets a JSON 410.
 export const HOSTS = {
   staff: "recruitment.cims.work",
   apply: "apply.cims.work",
