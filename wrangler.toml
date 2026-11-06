@@ -40,7 +40,8 @@ service = "cims-mailer"
 
 # Crons (UTC). 01:00 UTC = 09:00 Asia/Manila.
 #  - Monday 01:00 UTC  -> invitation email to both admins (first Monday only; code checks the date)
-#  - Thursday 01:00 UTC -> reminder (Thursday after the first Monday, only if not submitted)
+#  - Thursday 01:00 UTC -> reminder 1 (date 4-10 = first Monday + 3) and
+#                          reminder 2 (date 11-17 = first Monday + 10), each only if not submitted
 #  - Daily 02:00 UTC   -> applicant funnel sweep (7-day test reminder, 30-day auto-expiry)
 [triggers]
 crons = ["0 1 * * MON", "0 1 * * THU", "0 2 * * *"]

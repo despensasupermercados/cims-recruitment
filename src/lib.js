@@ -54,6 +54,69 @@ export function isReminderThursday(mnl) {
   return mnl.getUTCDay() === 4 && d >= 4 && d <= 10;
 }
 
+/** The Thursday one week after the reminder — first Monday + 10. Date 11–17. */
+export function isReminder2Thursday(mnl) {
+  const d = mnl.getUTCDate();
+  return mnl.getUTCDay() === 4 && d >= 11 && d <= 17;
+}
+
+// --- names ------------------------------------------------------------------
+/** Match key for a person: lower-case, diacritics stripped, "(RCL)" / " — Oct 02"
+ *  suffixes dropped, whitespace collapsed. "Ordoño, Raymond (CEL) — Oct 02" and
+ *  "ORDONO, RAYMOND" meet here. */
+export function normName(s) {
+  return String(s || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\s+[—–-]\s+.*$/, "")
+    .toLowerCase()
+    .replace(/[^a-z, ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Short ship name from any vessel string the console holds:
+ *  "MV CELEBRITY XCEL" -> "Xcel", "MV WONDER OF THE SEAS" -> "Wonder", "Adventure" -> "Adventure". */
+export function shortShip(v) {
+  if (!v) return "";
+  let s = String(v).trim().replace(/^MV\s+/i, "").replace(/\s+OF THE SEAS$/i, "")
+    .replace(/^(CELEBRITY|AZAMARA|NORWEGIAN)\s+/i, "").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+/**
+ * Classify the form's people rows against the crew register.
+ * crewIndex: Map(normName -> { status, vessel, fleet, firstSignOn }) from the console.
+ * A name in the register is "returning" (an existing crew member rotating back);
+ * a name not in the register is "new" — the register only holds people TDG has
+ * deployed before, so an unknown name is a first contract until proven otherwise.
+ */
+export function classifyPeople(rows, crewIndex) {
+  const out = [];
+  for (const r of rows || []) {
+    const hit = crewIndex ? crewIndex.get(normName(r.name)) : null;
+    out.push({ ...r, kind: hit ? "returning" : "new", crew: hit || null });
+  }
+  return out;
+}
+
+// --- verdict ----------------------------------------------------------------
+/**
+ * One word for the state of recruitment this month.
+ *   SHORT    — fewer ready than sign-offs in the 60-day window
+ *   WATCH    — covered, but the funnel is thin or someone "ready" has a bad document
+ *   ON TRACK — covered, funnel healthy, nobody ready is blocked
+ * thinFunnel: interviewed below half the best of the trailing months (min 3 months of data).
+ */
+export function verdict({ ready, signoffs60, interviewed, trend, readyBlocked }) {
+  if (signoffs60 !== null && signoffs60 !== undefined && ready < signoffs60) return "SHORT";
+  const past = (trend || []).map(t => t.interviewed).filter(n => typeof n === "number");
+  const thin = past.length >= 3 && interviewed < Math.max(...past) / 2;
+  if (thin || (readyBlocked || 0) > 0) return "WATCH";
+  return "ON TRACK";
+}
+
 // --- fleet mapping ----------------------------------------------------------
 const AZ_SHIPS = new Set(["onward","journey","quest","pursuit"]);
 const CEL_SHIPS = new Set(["millennium","solstice","edge","apex","eclipse","equinox",
@@ -158,8 +221,10 @@ export function validateSubmission(payload, fleets) {
   const decisions = String(p.decisions || "").trim();
   if (!decisions) errors.push("Decisions needed is required — write NONE if nothing needs a call.");
 
+  // Forecast joiners is OPTIONAL since 2026-11: demand comes from the console.
+  // A typed value is still stored so forecast-vs-actual history keeps its trail.
   const forecast = toInt(p.forecast && p.forecast.joiners);
-  if (forecast === null || Number.isNaN(forecast)) errors.push("Forecast joiners must be a whole number.");
+  if (Number.isNaN(forecast)) errors.push("Forecast joiners must be a whole number, or left empty.");
 
   const cleanRows = (rows, keys) => (Array.isArray(rows) ? rows : [])
     .map(r => { const o = {}; for (const k of keys) o[k] = String((r && r[k]) || "").trim(); return o; })
@@ -196,7 +261,7 @@ export function validateSubmission(payload, fleets) {
     people,
     visaMedical: cleanRows(p.visaMedical, ["name","fleet","type","note"]),
     compliance: cleanRows(p.compliance, ["name","doc","expires"]),
-    forecast: { joiners: forecast || 0, roles: String((p.forecast && p.forecast.roles) || "").trim() },
+    forecast: { joiners: forecast === null ? null : forecast, roles: String((p.forecast && p.forecast.roles) || "").trim() },
     signoffOutlook: toInt(p.signoffOutlook) || 0,
     feedback: {
       positive: String((p.feedback && p.feedback.positive) || "").trim(),
@@ -225,9 +290,24 @@ export function computeDigest(clean, prevRows) {
   const rates = [{ month: clean.month, rate: rate(clean.counts) }];
   for (const r of sorted.slice(0, 2)) rates.push({ month: r.month, rate: rate(r.counts) });
 
-  const gap = Math.max(0, clean.forecast.joiners - clean.counts.ready);
+  const fj = clean.forecast.joiners;
+  const gap = fj === null ? null : Math.max(0, fj - clean.counts.ready);
   const r0 = rates[0].rate;
-  const interviewsToFill = r0 ? Math.ceil(clean.forecast.joiners / (r0 / 100)) : null;
+  const interviewsToFill = r0 && fj !== null ? Math.ceil(fj / (r0 / 100)) : null;
 
-  return { prevMonth: prev ? prev.month : null, delta, rates, gap, interviewsToFill };
+  // Trend: this month + the trailing submitted months, oldest first.
+  const trailing = sorted.slice(0, 4).reverse();
+  const trend = [...trailing, { month: clean.month, counts: clean.counts }]
+    .map(r => ({ month: r.month, interviewed: r.counts.interviewed ?? null }));
+
+  // Forecast vs actual: what was typed, what the console said, what actually joined.
+  const history = [...sorted.slice(0, 2).reverse(), { month: clean.month, forecast: fj, signoffOutlook: clean.signoffOutlook, joinedTotal: clean.joinedTotal }]
+    .map(r => ({
+      month: r.month,
+      forecast: r.forecast ?? null,
+      signoffOutlook: r.signoffOutlook ?? null,
+      joinedTotal: r.joinedTotal ?? null,
+    }));
+
+  return { prevMonth: prev ? prev.month : null, delta, rates, gap, interviewsToFill, trend, history };
 }

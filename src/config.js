@@ -30,6 +30,29 @@ export const ADMINS = {
   crewAdmin: "maryjoy.manzanares@dg3.com",   // Maryjoy Manzanares — Part 2
 };
 
+// Envelope for the form-cycle mails (invitation, day-3 reminder, day-10
+// reminder). Rule set by Miguel 2026-11-06: To the shared recruitment inbox,
+// Cc the two people who actually type — Joy (Part 2) and Yanna (Part 1).
+export const ADMIN_MAIL = {
+  to: [ADMINS.recruitmentAdmin],
+  cc: [ADMINS.crewAdmin, "yanna.valdueza@tdgcm.ph"],   // Alyanna Marie Valdueza
+};
+
+// Extra Cc on the DAY-10 reminder only. Proposed (not yet decided): Joyce
+// Castillo (manager) and Miguel, so a second miss is visible without anyone
+// forwarding. Empty until Miguel says yes — add the addresses here, nothing else.
+export const REMINDER2_EXTRA_CC = [];
+
+// --- Demand ----------------------------------------------------------------
+// Relief demand comes from the console (projected sign-offs). Growth demand —
+// NCL Getaway staffing, Xcel, a newbuild, dry-dock cover — is set here by
+// Miguel and carried on every digest until changed. null = not set; the
+// digest then shows the line as "not set" so the gap stays visible.
+export const GROWTH_DEMAND = {
+  joiners: null,      // e.g. 4
+  note: "",           // e.g. "NCL Getaway pilot + Xcel"
+};
+
 // Sender. Domain must be verified in Resend.
 export const FROM = "CIMS Recruitment <recruitment@cims.work>";
 
@@ -75,6 +98,8 @@ export const PREFILL = {
   docWindowDays: 30,      // compliance: documents expired/expiring within 30 days of the report
   signoffWindowDays: 60,  // forecast headline: projected sign-offs within this window
   signoffListDays: 90,    // forecast chips: projected sign-offs listed from the console
+  expiredLookbackDays: 365, // digest: an expiry older than this is treated as a dead record, not a blocker
+  trendMonths: 5,         // digest: interviews-per-month bars
 };
 
 // --- Airtable (do not change unless the base is rebuilt) --------------------

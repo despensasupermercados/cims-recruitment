@@ -291,7 +291,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
   <div class="card">
     <div class="sec-label">10 &middot; Forecast — Next 60&ndash;90 Days</div>
     <div class="row c2">
-      <div><label>Forecast joiners</label><input type="number" min="0" id="fc_joiners"></div>
+      <div><label>Forecast joiners <span style="font-weight:400;color:#6B7280">(optional &mdash; the report uses console sign-offs as demand)</span></label><input type="number" min="0" id="fc_joiners"></div>
       <div><label>Roles to source now</label><input type="text" id="fc_roles" placeholder="e.g. 20 Printer Specialists — new ship"></div>
     </div>
     <div class="outlook" id="outlook" style="display:none"></div>
@@ -562,7 +562,7 @@ export const PAGE_HTML = `<!DOCTYPE html>
     clearRows("visa"); (p.visaMedical || []).forEach(function (d) { addRow("visa", d); });
     clearRows("doc"); (p.compliance || []).forEach(function (d) { addRow("doc", d); });
     var fc = p.forecast || {};
-    byId("fc_joiners").value = fc.joiners !== undefined ? fc.joiners : "";
+    byId("fc_joiners").value = fc.joiners !== undefined && fc.joiners !== null ? fc.joiners : "";
     byId("fc_roles").value = fc.roles || "";
     byId("decisions").value = p.decisions || "";
     byId("observations").value = p.observations || "";
