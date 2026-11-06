@@ -3,10 +3,10 @@
 // (fixed SELECTs in src/consoleData.js — this worker can never write there).
 
 import { PAGE_HTML, LOCKED_HTML } from "./page.js";
-import { RECIPIENTS, ADMINS, FROM, FORM_URL, APPLY_URL, HOSTS, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL, OPS_ALERT } from "./config.js";
-import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday } from "./lib.js";
-import { consoleContext } from "./consoleData.js";
-import { renderDigest, renderInvite, renderReminder } from "./emails.js";
+import { RECIPIENTS, ADMINS, ADMIN_MAIL, REMINDER2_EXTRA_CC, FROM, FORM_URL, APPLY_URL, HOSTS, CONSOLE_URL, AIRTABLE, FLEETS, FUNNEL, OPS_ALERT } from "./config.js";
+import { validateSubmission, computeDigest, manilaNow, prevMonthName, isFirstMonday, isReminderThursday, isReminder2Thursday } from "./lib.js";
+import { consoleContext, digestContext } from "./consoleData.js";
+import { renderDigest, renderInvite, renderReminder, renderReminder2 } from "./emails.js";
 import { APPLY_HTML, VERIFY_HTML } from "./funnelPages.js";
 import { validateApplication, validResultId, parseBigFiveHtml, applyGates, THRESHOLDS, nextFinalMonday, finalSlotText } from "./funnelLib.js";
 import { planAdminAction, planDecision, STAGES } from "./adminLib.js";
@@ -52,6 +52,11 @@ async function listAllMonths(env) {
 
 function recordToCounts(rec) {
   const f = rec.fields, F = AIRTABLE.fields;
+  // The stored submission (Raw JSON) carries what the typed fields do not:
+  // the console's sign-off count at submit time and the Part 2 joined list.
+  let raw = null;
+  try { raw = JSON.parse(f[F.rawJson] || "null"); } catch {}
+  const joinedList = raw && raw.people && Array.isArray(raw.people.joined) ? raw.people.joined.filter(r => r && (r.name || "").trim()) : null;
   return {
     month: f[F.month],
     status: f[F.status] || "Submitted",
@@ -61,7 +66,23 @@ function recordToCounts(rec) {
       inVisa: f[F.inVisa] ?? null, inMedicals: f[F.inMedicals] ?? null,
       ready: f[F.ready] ?? null,
     },
+    forecast: f[F.forecastJoiners] ?? null,
+    signoffOutlook: raw && raw.signoffOutlook !== undefined && raw.signoffOutlook !== null && raw.signoffOutlook !== "" ? Number(raw.signoffOutlook) : null,
+    joinedTotal: joinedList ? joinedList.length : (f[F.joinedNames] ? String(f[F.joinedNames]).split(/\n/).filter(x => x.trim()).length : null),
+    raw,
   };
+}
+
+/** Rebuild the validated submission from a stored record (for the digest preview). */
+function recordToClean(rec) {
+  const f = rec.fields, F = AIRTABLE.fields;
+  let raw = null;
+  try { raw = JSON.parse(f[F.rawJson] || "null"); } catch {}
+  if (!raw) return null;
+  // Submissions since 2026-07 store `clean` itself; older drafts store the form payload.
+  if (raw.counts && raw.people && raw.channels && raw.fleet && raw.fleet.ready) return raw;
+  const { ok, clean } = validateSubmission(raw, FLEETS);
+  return ok ? clean : null;
 }
 
 function cleanToFields(clean) {
@@ -88,7 +109,7 @@ function cleanToFields(clean) {
       ...clean.compliance.map(r => `${r.name} — ${r.doc}${r.expires ? " — " + r.expires : ""}`),
       ...clean.visaMedical.map(r => `${r.type}: ${r.name} (${r.fleet})${r.note ? " — " + r.note : ""}`),
     ].join("\n"),
-    [F.forecastJoiners]: clean.forecast.joiners,
+    ...(clean.forecast.joiners !== null ? { [F.forecastJoiners]: clean.forecast.joiners } : {}),
     [F.rolesToSource]: clean.forecast.roles,
     [F.feedbackPositive]: clean.feedback.positive,
     [F.feedbackPain]: clean.feedback.pain,
@@ -253,14 +274,36 @@ async function handleSubmit(body, env) {
 
   let emailSkipped = true;
   if (digestConfigured(env)) {
+    const ctx = await digestContext(env); // null if the console is unreachable — the digest says so
     const c = clean.counts;
-    const subject = `CIMS Recruitment Update — ${clean.month}${revised ? " (REVISED)" : ""} · Pipeline ${c.inProcess} · Approved ${c.approved} · Ready ${c.ready}`;
-    const html = renderDigest(clean, digest, { revised, consoleUrl: CONSOLE_URL, warnings });
-    await sendEmail(env, { to: RECIPIENTS.to, cc: RECIPIENTS.cc, subject, html, templateId: "recruitment.digest.v1" });
+    const demand = ctx ? ctx.signoffs60.length : (clean.signoffOutlook || null);
+    const subject = `CIMS Recruitment Update — ${clean.month}${revised ? " (REVISED)" : ""} · Ready ${c.ready}${demand !== null ? " for " + demand + " sign-offs" : ""} · Interviewed ${c.interviewed}`;
+    const html = renderDigest(clean, digest, { revised, consoleUrl: CONSOLE_URL, warnings, ctx, funnelOpen: FUNNEL.open });
+    await sendEmail(env, { to: RECIPIENTS.to, cc: RECIPIENTS.cc, subject, html, templateId: "recruitment.digest.v3" });
     emailSkipped = false;
   }
 
   return json({ ok: true, revised, emailSkipped, warnings });
+}
+
+/**
+ * GET /preview/digest?k=<FORM_KEY>&month=October%202026
+ * Renders the digest for a stored month against the LIVE console, sends nothing.
+ * This is how a template change is checked before anyone's inbox sees it.
+ */
+async function handlePreviewDigest(url, env) {
+  const month = url.searchParams.get("month") || prevMonthName(manilaNow());
+  const rec = await findMonthRecord(env, month);
+  if (!rec) return new Response("No submission stored for " + month, { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  const clean = recordToClean(rec);
+  if (!clean) return new Response("Stored submission for " + month + " cannot be rebuilt (no Raw JSON).", { status: 422, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  const all = await listAllMonths(env);
+  const prevRows = all.map(recordToCounts).filter(r => r.month && r.month !== clean.month && r.status === "Submitted");
+  const digest = computeDigest(clean, prevRows);
+  const ctx = await digestContext(env);
+  const revised = rec.fields[AIRTABLE.fields.status] === "Submitted";
+  const html = renderDigest(clean, digest, { revised, consoleUrl: CONSOLE_URL, warnings: [], ctx, funnelOpen: FUNNEL.open });
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Robots-Tag": "noindex" } });
 }
 
 // ---------------------------------------------------------------------------
@@ -699,33 +742,70 @@ async function funnelDaily(env) {
 // ---------------------------------------------------------------------------
 // Cron: invitation (first Monday) + reminder (Thursday after, if not submitted)
 // ---------------------------------------------------------------------------
+// Envelope for the form-cycle mails: To the recruitment inbox, Cc Joy + Yanna
+// (config.ADMIN_MAIL). The day-10 mail adds REMINDER2_EXTRA_CC on top.
+function adminEnvelope(extraCc = []) {
+  const to = ADMIN_MAIL.to.filter(a => a && !isPlaceholder(a));
+  const cc = [...ADMIN_MAIL.cc, ...extraCc].filter(a => a && !isPlaceholder(a) && !to.includes(a));
+  return { to, cc };
+}
+
+/** What the saved draft already holds, so the day-10 mail can say what is missing. */
+function draftState(rec) {
+  if (!rec) return null;
+  let raw = null;
+  try { raw = JSON.parse(rec.fields[AIRTABLE.fields.rawJson] || "null"); } catch {}
+  if (!raw) return { part1: false, part2: false };
+  const has = v => v !== undefined && v !== null && String(v).trim() !== "";
+  const part1 = !!(raw.counts && (has(raw.counts.inProcess) || has(raw.counts.interviewed) || has(raw.counts.approved)));
+  const p = raw.people || {};
+  const anyRows = arr => Array.isArray(arr) && arr.some(r => r && Object.values(r).some(v => has(v)));
+  const part2 = anyRows(p.ready) || anyRows(p.joined) || anyRows(p.flags) || anyRows(raw.visaMedical) || anyRows(raw.compliance);
+  return { part1, part2 };
+}
+
 async function handleScheduled(env) {
   const mnl = manilaNow();
   const month = prevMonthName(mnl);
-  const admins = adminEmails();
-  if (!mailReady(env) || !admins.length) return;
+  const { to, cc } = adminEnvelope();
+  if (!mailReady(env) || !to.length) return;
 
   if (isFirstMonday(mnl)) {
     await sendEmail(env, {
-      to: admins,
+      to, cc,
       templateId: "recruitment.form-invite.v1",
       subject: `${month.split(" ")[0]} closed — the Recruitment Update form is open`,
       html: renderInvite(month, keyedFormUrl(env)),
     });
-  } else if (isReminderThursday(mnl)) {
-    let submitted = false;
-    try {
-      const rec = await findMonthRecord(env, month);
-      submitted = !!(rec && rec.fields[AIRTABLE.fields.status] === "Submitted");
-    } catch {}
-    if (!submitted) {
-      await sendEmail(env, {
-        to: admins,
-        templateId: "recruitment.form-reminder.v1",
-        subject: `Reminder — ${month} Recruitment Update not yet submitted`,
-        html: renderReminder(month, keyedFormUrl(env)),
-      });
-    }
+    return;
+  }
+
+  const day3 = isReminderThursday(mnl), day10 = isReminder2Thursday(mnl);
+  if (!day3 && !day10) return;
+
+  let rec = null, submitted = false;
+  try {
+    rec = await findMonthRecord(env, month);
+    submitted = !!(rec && rec.fields[AIRTABLE.fields.status] === "Submitted");
+  } catch {}
+  if (submitted) return;
+
+  if (day3) {
+    await sendEmail(env, {
+      to, cc,
+      templateId: "recruitment.form-reminder.v1",
+      subject: `Reminder — ${month} Recruitment Update not yet submitted`,
+      html: renderReminder(month, keyedFormUrl(env)),
+    });
+  } else {
+    const env2 = adminEnvelope(REMINDER2_EXTRA_CC);
+    await sendEmail(env, {
+      to: env2.to, cc: env2.cc,
+      templateId: "recruitment.form-reminder2.v1",
+      idempotencyKey: "form-reminder2:" + month,
+      subject: `${month} Recruitment Update is 10 days overdue`,
+      html: renderReminder2(month, keyedFormUrl(env), draftState(rec)),
+    });
   }
 }
 
@@ -816,11 +896,18 @@ export default {
       return new Response(keyOk(env, url.searchParams.get("k")) ? PAGE_HTML : LOCKED_HTML,
         { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
+    if (req.method === "GET" && url.pathname === "/preview/digest") {
+      if (!keyOk(env, url.searchParams.get("k"))) return new Response(LOCKED_HTML, { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } });
+      try { return await handlePreviewDigest(url, env); }
+      catch (e) { return new Response("Preview failed: " + e.message, { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } }); }
+    }
     if (req.method === "GET" && url.pathname === "/health") {
       return json({
         ok: true,
         digestConfigured: digestConfigured(env),
         adminInvitesConfigured: adminEmails().length === 2,
+        adminEnvelope: adminEnvelope(),
+        digestVersion: "v3",
         hasAirtableToken: !!env.AIRTABLE_TOKEN,
         hasFormKey: !!env.FORM_KEY,
         hasConsoleBinding: !!env.CONSOLE_DB,

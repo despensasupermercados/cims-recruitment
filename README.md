@@ -14,11 +14,30 @@ If this worker breaks, the console is unaffected.
    Airtable base *TDG Recruitment Pipeline → Monthly Submission* (a resubmission
    for the same month updates the row and marks the email **REVISED**), computes
    deltas + approval-rate trend against all prior months, and emails the digest
-   via Resend — To: Miguel, Rita · Cc: the CIMS team.
+   via cims-mailer — To: Miguel, Rita · Cc: the CIMS team.
 3. **Cron, first Monday 09:00 Manila** — invitation email to Yanna covering the
    month just ended.
-4. **Cron, the Thursday after** — one reminder, only if nothing was submitted.
+4. **Cron, the Thursday after (+3) and the one after that (+10)** — reminders, each
+   only if nothing was submitted. The day-10 mail says which part of the draft is
+   still empty. Form-cycle mails go To recruitment@tdgcm.ph, Cc Joy and Yanna
+   (`ADMIN_MAIL` in config); `REMINDER2_EXTRA_CC` adds managers to the day-10 one.
 5. **`GET /health`** — shows whether the Airtable token and email are configured.
+6. **`GET /preview/digest?k=<key>&month=October%202026`** — renders the digest for a
+   stored month against the live console, sends nothing. Check a template change
+   here before anyone's inbox sees it.
+
+## The digest (v3, Nov 2026)
+
+"Daylight, CIMS edition" layout: verdict pill, headline, three lines, coverage
+bars (demand = console sign-offs; relief only — `GROWTH_DEMAND` in config adds
+the second line), ready/sign-off names, funnel tiles + interviews-per-month
+trend, by-fleet matrix + headcount + ship coverage, action list with an owner
+on every row, "not yet measured" rows that stay until the data exists, joined
+split into first contracts vs rotation, forecast vs actual. Names in the form are
+matched against the console crew register (case, diacritics and "(RCL)" suffixes
+ignored) to tell new hires from returning crew and to flag expired documents on
+anyone listed as ready. Every console-fed section degrades to a one-line note if
+the binding is down. `src/emails.js renderDigest`, `src/consoleData.js digestContext`.
 
 ## Safety rails
 
